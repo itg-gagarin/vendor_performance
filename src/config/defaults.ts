@@ -377,7 +377,6 @@ export const DEFAULT_CONFIG: AppConfig = {
       allowanceHint: 'Days per Level 1 material and origin. Empty = the extract median. A receipt inside its allowance is on time.',
       material: 'Level 1 material',
       median: 'Median',
-      p90: 'P90',
       onTimeNow: 'On time now',
       impactTitle: 'Impact of unsaved changes',
       impactOnTime: 'On-time rate',

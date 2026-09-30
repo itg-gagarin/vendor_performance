@@ -3,7 +3,7 @@ import { CRITERIA, FLAGS, ORIGINS } from '../config/types'
 import type { Day } from '../data/schema'
 import { makeFormatter } from './format'
 import type { Prepared } from './prepare'
-import { mean, median, quantile, rank } from './stats'
+import { mean, median, rank } from './stats'
 
 // ---------------------------------------------------------------------------
 // Scope
@@ -42,7 +42,6 @@ export interface AllowanceRow {
   origin: Origin
   receipts: number
   median: number | null
-  p90: number | null
   allowance: number
   isDefault: boolean
   onTimeRate: number | null
@@ -121,7 +120,6 @@ export function clockReceipts(p: Prepared, cfg: AppConfig): ClockResult {
         origin: o,
         receipts: days.length,
         median: medianByKey.get(k) ?? null,
-        p90: quantile(days, 0.9),
         allowance: allowanceOf(l1, o),
         isDefault: set === null || set === undefined,
         onTimeRate: t && t.n ? t.ok / t.n : null,

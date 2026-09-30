@@ -206,7 +206,7 @@ export function ConfigTab({ draft, setDraft, dirty, onSave, onDiscard, prepared,
                     <tr>
                       <th>{C.material}</th>
                       {ORIGINS.map((o) => (
-                        <th key={o} colSpan={4} style={{ borderLeft: '1px solid var(--border-default)' }}>
+                        <th key={o} colSpan={3} style={{ borderLeft: '1px solid var(--border-default)' }}>
                           {o}
                         </th>
                       ))}
@@ -214,7 +214,7 @@ export function ConfigTab({ draft, setDraft, dirty, onSave, onDiscard, prepared,
                     <tr>
                       <th style={{ top: 33 }} />
                       {ORIGINS.map((o) => (
-                        <FragmentHead key={o} labels={['Allowance', C.median, C.p90, C.onTimeNow]} />
+                        <FragmentHead key={o} labels={['Allowance', C.median, C.onTimeNow]} />
                       ))}
                     </tr>
                   </thead>
@@ -244,7 +244,6 @@ export function ConfigTab({ draft, setDraft, dirty, onSave, onDiscard, prepared,
                                 />
                               </td>
                               <td className="num mono">{a.receipts ? f.num(a.median ?? 0, 0) : '—'}</td>
-                              <td className="num mono">{a.receipts ? f.num(a.p90 ?? 0, 0) : '—'}</td>
                               <td className="num mono">{f.fmt(a.onTimeRate, 'pct')}</td>
                             </FragmentCells>
                           )

@@ -29,7 +29,7 @@ function ds(p: PoLine[], g: GrpoLine[], r: ReturnLine[] = []): Dataset {
 }
 
 describe('stats', () => {
-  it('median and P90 interpolate like Excel', () => {
+  it('median and quantiles interpolate like Excel', () => {
     expect(median([1, 2, 3, 4])).toBe(2.5)
     expect(quantile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.9)).toBeCloseTo(9.1)
     expect(median([])).toBeNull()
