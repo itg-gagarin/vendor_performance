@@ -4,7 +4,7 @@ import { autoMap, convert, convertFlat, guessTable, readFile, type RawSheet } fr
 import { FIELDS, type Dataset, type TableKey } from '../data/schema'
 import { interpolate } from '../engine/compute'
 import { useUi } from '../ui/context'
-import { Field, Pill } from '../ui/primitives'
+import { Field, Pill, TextExport } from '../ui/primitives'
 
 interface Props {
   dataset: Dataset | null
@@ -133,16 +133,9 @@ export function UploadTab({ dataset, onLoad, onDemo, onClear }: Props) {
     }
   }, [dataset])
 
-  const template = (t: TableKey) => {
-    const headers = FIELDS[t].map((fd) => cfg.data.fieldAliases[t][fd.key]?.[0] ?? fd.label)
-    const blob = new Blob(['﻿' + headers.join(',') + '\n'], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `template-${t}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  const [templateFor, setTemplateFor] = useState<TableKey | null>(null)
+  const template = (t: TableKey) => setTemplateFor(t)
+  const templateText = (t: TableKey) => '\uFEFF' + FIELDS[t].map((fd) => cfg.data.fieldAliases[t][fd.key]?.[0] ?? fd.label).join(',') + '\n'
 
   return (
     <div className="stack-section">
@@ -338,6 +331,16 @@ export function UploadTab({ dataset, onLoad, onDemo, onClear }: Props) {
           </>
         )}
       </div>
+      {templateFor && (
+        <TextExport
+          title={`CSV template · ${U[`${templateFor}Title`]}`}
+          hint="Header row the upload recognises. Paste it as the first row of your export, or save it as a .csv file."
+          text={templateText(templateFor)}
+          filename={`template-${templateFor}.csv`}
+          mime="text/csv"
+          onClose={() => setTemplateFor(null)}
+        />
+      )}
     </div>
   )
 }

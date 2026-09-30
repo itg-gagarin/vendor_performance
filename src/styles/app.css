@@ -765,7 +765,7 @@ details.legend[open] > summary svg { transform: rotate(90deg); }
 }
 .savebar {
   position: sticky;
-  top: 0;
+  top: env(safe-area-inset-top, 0px);
   z-index: 5;
   display: flex;
   align-items: center;

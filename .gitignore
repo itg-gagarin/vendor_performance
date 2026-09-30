@@ -8,3 +8,4 @@ coverage
 *.xlsx
 *.xlsm
 *.csv
+dist-artifact

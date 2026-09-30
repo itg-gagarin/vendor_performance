@@ -57,7 +57,8 @@ export default function App() {
 
   useEffect(() => {
     loadDataset().then((ds) => {
-      setDataset(ds)
+      // The hosted demo opens on sample data so the first view shows the tool working.
+      setDataset(ds ?? (import.meta.env.VITE_AUTO_DEMO === '1' ? buildDemoDataset() : null))
       setBooting(false)
     })
   }, [])
@@ -224,7 +225,18 @@ export default function App() {
                 </div>
               </div>
             </div>
-          ) : tab === 'scorecard' && res ? (
+          ) : null}
+          {!booting && dataset?.isDemo && (tab === 'scorecard' || tab === 'issues') && (
+            <div className="note note-warn">
+              <span>
+                {L.upload.demoNote}{' '}
+                <button className="btn btn-sm" onClick={() => setTab('upload')}>
+                  <Upload size={14} /> {L.tabs.upload}
+                </button>
+              </span>
+            </div>
+          )}
+          {booting || (needsData && (tab === 'scorecard' || tab === 'issues')) ? null : tab === 'scorecard' && res ? (
             <Scorecard res={res} minPoLines={minPoLines} setMinPoLines={setMinPoLines} onOpen={(r) => setOpenCode(r.code)} onCopy={onCopy} scopeKey={scopeKey} />
           ) : tab === 'issues' && res ? (
             <Issues res={res} onOpen={(r) => setOpenCode(r.code)} onCopy={onCopy} scopeKey={scopeKey} />

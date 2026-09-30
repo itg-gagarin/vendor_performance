@@ -6,7 +6,7 @@ import { CRITERIA, FLAGS, MEASURES, ORIGINS, type AppConfig, type Criterion, typ
 import { allIndexes, clockReceipts, computeScope, measureValues, type ScopeResult, type Scope } from '../engine/compute'
 import type { Prepared } from '../engine/prepare'
 import { useUi } from '../ui/context'
-import { Dialog, Field, Help, NumberInput, Segmented, Toggle } from '../ui/primitives'
+import { Dialog, Field, Help, NumberInput, Segmented, TextExport, Toggle } from '../ui/primitives'
 import { BandEditor, BinEditor, ColumnEditor, LabelEditor, ListInput, TileEditor, ToneSelect, type Edit } from './configEditors'
 import { FIELDS, type TableKey } from '../data/schema'
 
@@ -87,15 +87,8 @@ export function ConfigTab({ draft, setDraft, dirty, onSave, onDiscard, prepared,
     ]
   })()
 
-  const doExport = () => {
-    const blob = new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `vendor-performance-config-${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  const [exporting, setExporting] = useState(false)
+  const doExport = () => setExporting(true)
   const doImport = async (file: File) => {
     try {
       setDraft(normalizeConfig(JSON.parse(await file.text())))
@@ -565,6 +558,16 @@ export function ConfigTab({ draft, setDraft, dirty, onSave, onDiscard, prepared,
         </div>
       </div>
 
+      {exporting && (
+        <TextExport
+          title={A.exportJson}
+          hint="Save this as a .json file, or copy it into a message. Import it on another browser to reuse the configuration."
+          text={JSON.stringify(draft, null, 2)}
+          filename={`vendor-performance-config-${new Date().toISOString().slice(0, 10)}.json`}
+          mime="application/json"
+          onClose={() => setExporting(false)}
+        />
+      )}
       {confirmReset && (
         <Dialog
           title={A.reset}

@@ -279,3 +279,47 @@ export function useNarrow(query = '(max-width: 640px)') {
   }, [query])
   return narrow
 }
+
+/**
+ * Hand a text file to the user. Shows the content with Copy and Download so it
+ * still works where the host blocks downloads (the Copy path always works).
+ */
+export function TextExport({ title, hint, text, filename, mime, onClose }: { title: string; hint: string; text: string; filename: string; mime: string; onClose: () => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const [copied, setCopied] = useState(false)
+  const copyText = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+    } catch {
+      ref.current?.select()
+    }
+  }
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([text], { type: mime }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+  return (
+    <Dialog
+      title={title}
+      onClose={onClose}
+      actions={
+        <>
+          <button className="btn" onClick={download}>
+            Download {filename}
+          </button>
+          <button className="btn btn-commit" onClick={copyText}>
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </>
+      }
+    >
+      <p className="small muted">{hint}</p>
+      <textarea ref={ref} className="input" rows={12} readOnly value={text} aria-label={title} />
+    </Dialog>
+  )
+}
