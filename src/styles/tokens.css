@@ -1,0 +1,186 @@
+/* Global Design System tokens. Semantic names are identical across modes;
+   only values change. Components reference semantic names only. */
+
+:root {
+  color-scheme: light;
+
+  /* Accents */
+  --brand-advance: #8dc63f;
+  --brand-advance-hover: #7ab034;
+  --text-on-advance: #062c12;
+  --text-on-tint: #3f6212;
+  --tint-advance: #f1f8e6;
+  --tint-advance-strong: #e2f1cc;
+  --brand-commit: #4f46e5;
+  --brand-commit-hover: #4338ca;
+  --brand-sales: #e11d48;
+
+  /* Neutrals */
+  --surface-page: #f7f8fa;
+  --surface-card: #ffffff;
+  --surface-hover: #f8fafc;
+  --surface-sunken: #f1f5f9;
+  --text-default: #0f1729;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+  --border-default: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --chart-grid: #eef2f7;
+  --chart-axis: #64748b;
+
+  /* Status */
+  --status-amber: #d97706;
+  --status-emerald: #059669;
+  --status-red: #dc2626;
+
+  /* Status tints (cell and pill backgrounds) and their readable text */
+  --tint-amber: #fef3c7;
+  --tint-amber-border: #fcd34d;
+  --ink-amber: #92400e;
+  --tint-emerald: #d1fae5;
+  --tint-emerald-border: #6ee7b7;
+  --ink-emerald: #065f46;
+  --tint-red: #fee2e2;
+  --tint-red-border: #fca5a5;
+  --ink-red: #991b1b;
+  --tint-commit: #eef2ff;
+  --ink-commit: #3730a3;
+  --tint-sales: #ffe4e6;
+  --ink-sales: #9f1239;
+  --tint-neutral: #f1f5f9;
+  --ink-neutral: #334155;
+
+  /* On solid colour */
+  --on-advance: #062c12;
+  --on-commit: #ffffff;
+  --on-sales: #ffffff;
+  --on-amber: #000000;
+  --on-emerald: #000000;
+  --on-red: #ffffff;
+
+  /* Tooltip surface */
+  --tooltip-bg: #0f1729;
+  --tooltip-text: #ffffff;
+
+  /* Type */
+  --font-display: 'Inter', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --cell: var(--space-2);
+  --gap: var(--space-3);
+  --card: var(--space-4);
+  --section: var(--space-6);
+  --page: var(--space-8);
+
+  /* Shape */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* Elevation — only for layers that float above the page */
+  --shadow-floating: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-menu: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --focus-ring: 0 0 0 1px var(--brand-advance), 0 0 0 3px rgb(141 198 63 / 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --brand-commit: #6366f1;
+    --brand-commit-hover: #818cf8;
+    --brand-sales: #f43f5e;
+    --text-on-tint: #a5d84f;
+    --tint-advance: #1e2a12;
+    --tint-advance-strong: #283a16;
+    --surface-page: #0b0f1a;
+    --surface-card: #141a29;
+    --surface-hover: #1c2436;
+    --surface-sunken: #10151f;
+    --text-default: #e8ecf3;
+    --text-muted: #94a3b8;
+    --text-faint: #64748b;
+    --border-default: #2a3346;
+    --border-strong: #3a4560;
+    --chart-grid: #232c40;
+    --chart-axis: #94a3b8;
+    --status-amber: #f59e0b;
+    --status-emerald: #10b981;
+    --status-red: #ef4444;
+    --tint-amber: #2d2210;
+    --tint-amber-border: #6b4c12;
+    --ink-amber: #fcd34d;
+    --tint-emerald: #0f2a22;
+    --tint-emerald-border: #146b52;
+    --ink-emerald: #6ee7b7;
+    --tint-red: #2e1519;
+    --tint-red-border: #7f2a2a;
+    --ink-red: #fca5a5;
+    --tint-commit: #1e1f3d;
+    --ink-commit: #c7d2fe;
+    --tint-sales: #2e141c;
+    --ink-sales: #fda4af;
+    --tint-neutral: #1c2436;
+    --ink-neutral: #cbd5e1;
+    --on-sales: #000000;
+    --on-red: #000000;
+    --tooltip-bg: #e8ecf3;
+    --tooltip-text: #0b0f1a;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --brand-commit: #6366f1;
+  --brand-commit-hover: #818cf8;
+  --brand-sales: #f43f5e;
+  --text-on-tint: #a5d84f;
+  --tint-advance: #1e2a12;
+  --tint-advance-strong: #283a16;
+  --surface-page: #0b0f1a;
+  --surface-card: #141a29;
+  --surface-hover: #1c2436;
+  --surface-sunken: #10151f;
+  --text-default: #e8ecf3;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
+  --border-default: #2a3346;
+  --border-strong: #3a4560;
+  --chart-grid: #232c40;
+  --chart-axis: #94a3b8;
+  --status-amber: #f59e0b;
+  --status-emerald: #10b981;
+  --status-red: #ef4444;
+  --tint-amber: #2d2210;
+  --tint-amber-border: #6b4c12;
+  --ink-amber: #fcd34d;
+  --tint-emerald: #0f2a22;
+  --tint-emerald-border: #146b52;
+  --ink-emerald: #6ee7b7;
+  --tint-red: #2e1519;
+  --tint-red-border: #7f2a2a;
+  --ink-red: #fca5a5;
+  --tint-commit: #1e1f3d;
+  --ink-commit: #c7d2fe;
+  --tint-sales: #2e141c;
+  --ink-sales: #fda4af;
+  --tint-neutral: #1c2436;
+  --ink-neutral: #cbd5e1;
+  --on-sales: #000000;
+  --on-red: #000000;
+  --tooltip-bg: #e8ecf3;
+  --tooltip-text: #0b0f1a;
+}
