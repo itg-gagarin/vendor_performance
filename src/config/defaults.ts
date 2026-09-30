@@ -198,6 +198,31 @@ export const DEFAULT_CONFIG: AppConfig = {
 
   data: {
     fieldAliases: {
+      flat: {
+        vendorCode: ['Kode Vendor', 'Vendor Code', 'CardCode', 'BP Code'],
+        vendorName: ['Nama Vendor', 'Vendor Name', 'CardName', 'BP Name'],
+        vendorGroup: ['Vendor Group', 'GroupName', 'BP Group'],
+        level1: ['Level 1 (Item Group)', 'Level 1', 'Item Group', 'ItmsGrpNam', 'U_Level1'],
+        level2: ['Cat2 Name', 'Level 2', 'U_Level2'],
+        level3: ['Cat3 Name', 'Level 3', 'U_Level3'],
+        level4: ['Cat4 Name', 'Level 4', 'U_Level4'],
+        prDoc: ['PR DocNum', 'PR No', 'PR Number'],
+        prDate: ['PR Date'],
+        prRequiredDate: ['PR Required Date', 'Required Date', 'PQTReqDate'],
+        poDoc: ['PO DocNum', 'PO No', 'PO Number'],
+        poLine: ['PO LineNum', 'PO Line'],
+        poDate: ['PO Date'],
+        itemCode: ['Item Code', 'ItemCode'],
+        itemName: ['Item Description', 'Item Name', 'Dscription'],
+        qtyOrdered: ['PO Qty', 'Qty Ordered'],
+        lineValue: ['Line Total', 'LineTotal', 'Total (LC)'],
+        grpoDoc: ['GRPO DocNum', 'GRPO No', 'GRPO Number'],
+        grpoDate: ['GRPO Date', 'Receipt Date'],
+        qtyReceived: ['GRPO Qty (this receipt)', 'GRPO Qty', 'Qty Received'],
+        qtyReturned: ['Returned Qty (this receipt)', 'Returned Qty', 'Qty Returned'],
+        returnDate: ['Return Date'],
+        origin: ['Origin', 'Import/Local', 'U_Origin'],
+      },
       po: {
         poDoc: ['PO No', 'PO Number', 'PO DocNum', 'DocNum', 'PO_DocNum', 'DocEntry'],
         poLine: ['PO Line', 'LineNum', 'Line', 'PO_LineNum'],
@@ -241,6 +266,9 @@ export const DEFAULT_CONFIG: AppConfig = {
     importValues: ['import', 'impor', 'i', 'imp', 'overseas', 'foreign'],
     localValues: ['local', 'lokal', 'l', 'loc', 'domestic'],
     defaultOrigin: 'Local',
+    // The PRD ranks material vendors. With these groups left out, the extract's
+    // medians reproduce the PRD allowance examples (Hardware 19/42, Packaging 18/29, Sparepart 6/35).
+    excludedVendorGroups: ['V. Service & Maintenance', 'V. Fixed Asset', 'V. GA Material', 'V. Internal Group', 'V. Expedition'],
     dateOrder: 'auto',
   },
 
@@ -248,7 +276,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     app: { title: 'Vendor Performance', subtitle: 'Material vendors ranked on SAP B1 purchasing data' },
     tabs: { scorecard: 'Scorecard', issues: 'Vendors with issues', config: 'Configuration', how: 'How scoring works', upload: 'Upload' },
     scope: {
-      vendorGroup: 'Vendor group', level1: 'Level 1', level2: 'Level 2', level3: 'Level 3', level4: 'Level 4',
+      vendorGroup: 'Vendor group', allGroups: 'All groups', chooseFirst: 'Choose level {n} first', clear: 'Clear',
+      level1: 'Level 1 · Item Group', level2: 'Level 2', level3: 'Level 3', level4: 'Level 4',
       all: 'All',
       tip: 'Scope = vendor group × material path. Ranks, medians, quartiles and the spend share are all computed inside this scope.',
     },
@@ -342,6 +371,8 @@ export const DEFAULT_CONFIG: AppConfig = {
       noProfile: 'No receipts with both dates for this measure.',
     },
     config: {
+      groupsTitle: 'Vendor groups in the platform',
+      groupsHint: 'Groups switched off are left out of every scope, median, allowance and rank. Defaults leave out non-material groups (the PRD ranks material vendors). Count = PO lines.',
       allowanceTitle: 'Lead-time allowance',
       allowanceHint: 'Days per Level 1 material and origin. Empty = the extract median. A receipt inside its allowance is on time.',
       material: 'Level 1 material',
@@ -409,7 +440,9 @@ export const DEFAULT_CONFIG: AppConfig = {
     },
     upload: {
       title: 'Upload SAP extract',
-      intro: 'Load the three SAP B1 extracts as CSV or Excel. Columns are matched by header name; adjust the mapping if a column is not found. Data stays in this browser.',
+      flatTitle: 'Combined SAP extract',
+      flatHint: 'One row per GRPO receipt with PR, PO and return fields on the same row (PO lines not yet received appear once, without GRPO fields).',
+      intro: 'Load the combined SAP B1 extract, or the three separate extracts, as CSV or Excel. Columns are matched by header name; adjust the mapping if a column is not found. Data stays in this browser.',
       poTitle: 'Purchase order lines',
       poHint: 'OPOR / POR1 joined to OPRQ / PRQ1 for PR date and required date.',
       grpoTitle: 'Goods receipt PO lines',

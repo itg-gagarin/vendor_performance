@@ -13,6 +13,24 @@ npm run build      # type-check + production build into dist/
 
 It is a static client-side app. The data stays in the browser (IndexedDB) and the configuration is saved per browser (localStorage), as CF-7 asks. You can host `dist/` on any static web server.
 
+## Data
+
+The upload accepts the **combined SAP extract** (one row per GRPO receipt with PR, PO and return fields on the row, as in `Kode Vendor … Return Flag`) or three separate PO / GRPO / return extracts. For the combined extract:
+
+- A PO line is identified by PO DocNum + PO LineNum. A blank LineNum is SAP line 0, and with that rule every PO line resolves to one item and one quantity.
+- Line Total and PO Qty repeat on every receipt row, so they are taken once per PO line and never summed across rows.
+- A row is a receipt when it has a GRPO DocNum and GRPO Date. Rows with a received quantity but no GRPO number or date are reported and not counted.
+- Import / Local is read from the vendor group name (`V. Import …` → Import, otherwise Local).
+- Dates with an impossible year (e.g. `07/05/0206`) are reported and left empty.
+
+Reconciliation against the real extract (not committed):
+
+```bash
+VP_SAMPLE=/path/to/extract.xlsx npx vitest run src/reconcile
+```
+
+With the default vendor-group exclusions this reproduces all six PRD allowance examples (Hardware 19/42, Packaging 18/29, Sparepart 6/35 d) and the 117 return rows. A full-scope recompute takes about 110 ms.
+
 ## Screens
 
 | Tab | PRD |
@@ -50,6 +68,8 @@ src/styles/   design tokens (light/dark) and component CSS
 ```
 
 ## Open points (defaults ship, sign-off needed)
+
+0. **Vendor groups.** Service & Maintenance, Fixed Asset, GA Material, Internal Group and Expedition are left out by default because the PRD ranks material vendors. Leaving out those groups, or leaving out receipts with zero net received, reproduces the PRD medians equally well, so the data alone cannot settle this.
 
 1. **Weights (M1).** Default is 1 / 1 / 1.
 2. **Allowance.** The PRD states both "local 1 month, import 3 months" and "median of the extract". The median is the default; 30 / 90 days applies only when a material has no history.

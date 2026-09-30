@@ -56,7 +56,12 @@ export interface Dataset {
   isDemo: boolean
 }
 
-export type TableKey = 'po' | 'grpo' | 'returns'
+/**
+ * 'flat' is the combined SAP extract: one row per GRPO receipt with the PR, PO
+ * and return fields repeated on it (PO lines without a receipt appear once with
+ * empty GRPO fields). It is split into the three canonical tables on load.
+ */
+export type TableKey = 'po' | 'grpo' | 'returns' | 'flat'
 
 export interface FieldDef {
   key: string
@@ -66,6 +71,31 @@ export interface FieldDef {
 }
 
 export const FIELDS: Record<TableKey, FieldDef[]> = {
+  flat: [
+    { key: 'vendorCode', label: 'Vendor code', required: true, kind: 'text' },
+    { key: 'vendorName', label: 'Vendor name', required: true, kind: 'text' },
+    { key: 'vendorGroup', label: 'Vendor group', required: false, kind: 'text' },
+    { key: 'level1', label: 'Material level 1', required: true, kind: 'text' },
+    { key: 'level2', label: 'Material level 2', required: false, kind: 'text' },
+    { key: 'level3', label: 'Material level 3', required: false, kind: 'text' },
+    { key: 'level4', label: 'Material level 4', required: false, kind: 'text' },
+    { key: 'prDoc', label: 'PR number', required: false, kind: 'text' },
+    { key: 'prDate', label: 'PR date', required: false, kind: 'date' },
+    { key: 'prRequiredDate', label: 'PR required date', required: false, kind: 'date' },
+    { key: 'poDoc', label: 'PO number', required: true, kind: 'text' },
+    { key: 'poLine', label: 'PO line', required: false, kind: 'text' },
+    { key: 'poDate', label: 'PO date', required: true, kind: 'date' },
+    { key: 'itemCode', label: 'Item code', required: true, kind: 'text' },
+    { key: 'itemName', label: 'Item name', required: false, kind: 'text' },
+    { key: 'qtyOrdered', label: 'Quantity ordered', required: true, kind: 'number' },
+    { key: 'lineValue', label: 'Line total', required: true, kind: 'number' },
+    { key: 'grpoDoc', label: 'GRPO number', required: false, kind: 'text' },
+    { key: 'grpoDate', label: 'GRPO date', required: false, kind: 'date' },
+    { key: 'qtyReceived', label: 'Quantity received', required: false, kind: 'number' },
+    { key: 'qtyReturned', label: 'Quantity returned', required: false, kind: 'number' },
+    { key: 'returnDate', label: 'Return date', required: false, kind: 'date' },
+    { key: 'origin', label: 'Import / Local', required: false, kind: 'origin' },
+  ],
   po: [
     { key: 'poDoc', label: 'PO number', required: true, kind: 'text' },
     { key: 'poLine', label: 'PO line', required: true, kind: 'text' },

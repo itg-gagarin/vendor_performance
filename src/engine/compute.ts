@@ -18,7 +18,7 @@ export interface Scope {
 
 export const EMPTY_SCOPE: Scope = { vendorGroup: '', level1: '', level2: '', level3: '', level4: '' }
 
-function inScope(scope: Scope, group: string, path: readonly string[]): boolean {
+function matchesScope(scope: Scope, group: string, path: readonly string[]): boolean {
   if (scope.vendorGroup && group !== scope.vendorGroup) return false
   if (scope.level1 && path[0] !== scope.level1) return false
   if (scope.level2 && path[1] !== scope.level2) return false
@@ -73,9 +73,11 @@ export function clockReceipts(p: Prepared, cfg: AppConfig): ClockResult {
 
   // Default allowance A(m, o) = median clock days over all receipts of material m and origin o.
   const byKey = new Map<string, number[]>()
+  const excluded = new Set(cfg.data.excludedVendorGroups)
   raw.forEach((c, i) => {
     if (c.days === null) return
     const r = p.receipts[i]
+    if (excluded.has(r.vendorGroup)) return
     const k = `${r.path[0]}|${r.origin}`
     if (!byKey.has(k)) byKey.set(k, [])
     byKey.get(k)!.push(c.days)
@@ -98,6 +100,7 @@ export function clockReceipts(p: Prepared, cfg: AppConfig): ClockResult {
     const inside = c.days <= allowanceOf(r.path[0], r.origin)
     const byRequired = cfg.onTime.requiredDateCounts && line.prRequiredDate !== null && r.grpoDate <= line.prRequiredDate
     const onTime = inside || byRequired
+    if (excluded.has(r.vendorGroup)) return { days: c.days, exclusion: null, onTime }
     const k = `${r.path[0]}|${r.origin}`
     const t = tally.get(k) ?? { n: 0, ok: 0 }
     t.n++
@@ -238,6 +241,9 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
   const { fmt, num } = makeFormatter(cfg)
   const fmtPct = (x: number) => fmt(x, 'pct')
   const fmtDays = (x: number) => fmt(x, 'days')
+  // Excluded (non-material) vendor groups never enter any scope.
+  const excludedGroups = new Set(cfg.data.excludedVendorGroups)
+  const inScope = (sc: Scope, group: string, path: readonly string[]) => !excludedGroups.has(group) && matchesScope(sc, group, path)
   const byVendor = new Map<string, { po: number[]; rc: number[]; ret: number[] }>()
   const bucket = (code: string) => {
     let b = byVendor.get(code)

@@ -3,3 +3,8 @@ dist
 *.local
 .DS_Store
 coverage
+
+# SAP extracts are company data; never commit them
+*.xlsx
+*.xlsm
+*.csv

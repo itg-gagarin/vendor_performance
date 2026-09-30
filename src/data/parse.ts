@@ -1,6 +1,6 @@
 import Papa from 'papaparse'
 import type { AppConfig, FieldAliases, Origin } from '../config/types'
-import { DAY_MS, FIELDS, dayFromYMD, type Day, type GrpoLine, type PoLine, type ReturnLine, type TableKey } from './schema'
+import { DAY_MS, FIELDS, dayFromYMD, type Dataset, type Day, type GrpoLine, type PoLine, type ReturnLine, type TableKey } from './schema'
 
 export type Cell = string | number | boolean | Date | null
 
@@ -52,6 +52,10 @@ export function autoMap(headers: string[], table: TableKey, aliases: FieldAliase
 
 /** Which table a sheet most likely holds, by how many required fields its headers match. */
 export function guessTable(sheet: RawSheet, cfg: AppConfig): TableKey | null {
+  // A combined extract also satisfies the PO table, so it is checked first and
+  // wins when every required field and the receipt date column are present.
+  const flat = autoMap(sheet.headers, 'flat', cfg.data.fieldAliases.flat)
+  if (FIELDS.flat.every((f) => !f.required || flat[f.key] >= 0) && flat.grpoDate >= 0 && flat.qtyReceived >= 0) return 'flat'
   let best: TableKey | null = null
   let bestScore = 0
   for (const t of ['po', 'grpo', 'returns'] as TableKey[]) {
@@ -71,6 +75,16 @@ export function guessTable(sheet: RawSheet, cfg: AppConfig): TableKey | null {
 // Cell parsing
 
 export function parseDay(c: Cell, order: AppConfig['data']['dateOrder']): Day | null {
+  const d = parseDayRaw(c, order)
+  // Typos such as "07/05/0206" parse to a real but absurd year; treat them as unreadable.
+  if (d === null || d < MIN_DAY || d > MAX_DAY) return null
+  return d
+}
+
+const MIN_DAY = dayFromYMD(1990, 1, 1)
+const MAX_DAY = dayFromYMD(2100, 12, 31)
+
+function parseDayRaw(c: Cell, order: AppConfig['data']['dateOrder']): Day | null {
   if (c === null || c === '') return null
   if (c instanceof Date) return Number.isNaN(c.getTime()) ? null : Math.floor(c.getTime() / DAY_MS)
   if (typeof c === 'number') {
@@ -159,7 +173,7 @@ const text = (c: Cell) => (c === null ? '' : c instanceof Date ? c.toISOString()
 export function convert(table: 'po', sheet: RawSheet, map: Record<string, number>, cfg: AppConfig): ConvertResult<PoLine>
 export function convert(table: 'grpo', sheet: RawSheet, map: Record<string, number>, cfg: AppConfig): ConvertResult<GrpoLine>
 export function convert(table: 'returns', sheet: RawSheet, map: Record<string, number>, cfg: AppConfig): ConvertResult<ReturnLine>
-export function convert(table: TableKey, sheet: RawSheet, map: Record<string, number>, cfg: AppConfig): ConvertResult<PoLine | GrpoLine | ReturnLine> {
+export function convert(table: Exclude<TableKey, 'flat'>, sheet: RawSheet, map: Record<string, number>, cfg: AppConfig): ConvertResult<PoLine | GrpoLine | ReturnLine> {
   const fields = FIELDS[table]
   const out: (PoLine | GrpoLine | ReturnLine)[] = []
   const reasons: Record<string, number> = {}
@@ -196,4 +210,127 @@ export function convert(table: TableKey, sheet: RawSheet, map: Record<string, nu
   }
   const skipped = Object.values(reasons).reduce((a, b) => a + b, 0)
   return { rows: out, skipped, reasons, originDefaulted }
+}
+
+// ---------------------------------------------------------------------------
+// Combined extract
+
+export interface FlatReport {
+  sourceRows: number
+  skipped: number
+  reasons: Record<string, number>
+  poLines: number
+  receipts: number
+  returns: number
+  /** Non-fatal data-quality notes, e.g. unreadable optional dates. */
+  warnings: Record<string, number>
+  /** Vendor group → origin read from it (when no origin column is mapped). */
+  originByGroup: Record<string, Origin>
+}
+
+/**
+ * Split a receipt-grain extract into PO lines, receipts and returns.
+ * - PO line identity is PO number + PO line; a blank PO line is SAP line 0
+ *   (the extract leaves LineNum 0 empty).
+ * - PO line value and quantity repeat on every receipt row, so they are taken
+ *   once per PO line, never summed across rows.
+ * - A row is a receipt when it carries a GRPO number and date.
+ */
+export function convertFlat(sheet: RawSheet, map: Record<string, number>, cfg: AppConfig): { data: Pick<Dataset, 'po' | 'grpo' | 'returns'>; report: FlatReport } {
+  const at = (r: Cell[], k: string) => (map[k] ?? -1) >= 0 ? (r[map[k]] ?? null) : null
+  const po: PoLine[] = []
+  const grpo: GrpoLine[] = []
+  const returns: ReturnLine[] = []
+  const poIndex = new Map<string, number>()
+  const seenReceipt = new Set<string>()
+  const reasons: Record<string, number> = {}
+  const warnings: Record<string, number> = {}
+  const originByGroup: Record<string, Origin> = {}
+  const warn = (k: string) => (warnings[k] = (warnings[k] ?? 0) + 1)
+  const date = (r: Cell[], k: string, label: string): Day | null => {
+    const raw = at(r, k)
+    const d = parseDay(raw, cfg.data.dateOrder)
+    if (d === null && raw !== null && String(raw).trim() !== '') warn(`Unreadable ${label} (left empty)`)
+    return d
+  }
+  const num = (r: Cell[], k: string) => parseNumber(at(r, k), cfg.format.locale)
+
+  for (const r of sheet.rows) {
+    const vendorCode = text(at(r, 'vendorCode'))
+    const poDoc = text(at(r, 'poDoc'))
+    const itemCode = text(at(r, 'itemCode'))
+    const level1 = text(at(r, 'level1'))
+    const poDate = parseDay(at(r, 'poDate'), cfg.data.dateOrder)
+    const qtyOrdered = num(r, 'qtyOrdered')
+    const lineValue = num(r, 'lineValue')
+    const missing = !vendorCode ? 'vendor code' : !poDoc ? 'PO number' : !itemCode ? 'item code' : !level1 ? 'material level 1' : poDate === null ? 'PO date' : qtyOrdered === null ? 'PO quantity' : lineValue === null ? 'line total' : null
+    if (missing) {
+      const k = `Missing or unreadable ${missing}`
+      reasons[k] = (reasons[k] ?? 0) + 1
+      continue
+    }
+
+    const vendorGroup = text(at(r, 'vendorGroup'))
+    let poLine = text(at(r, 'poLine')).replace(/\.0+$/, '')
+    if (!poLine) poLine = '0'
+    const key = `${poDoc}|${poLine}`
+
+    if (!poIndex.has(key)) {
+      let origin = map.origin >= 0 ? parseOrigin(at(r, 'origin'), cfg) : null
+      if (origin === null) {
+        origin = parseOrigin(vendorGroup, cfg) ?? cfg.data.defaultOrigin
+        if (vendorGroup) originByGroup[vendorGroup] = origin
+      }
+      poIndex.set(key, po.length)
+      po.push({
+        poDoc,
+        poLine,
+        poDate: poDate!,
+        vendorCode,
+        vendorName: text(at(r, 'vendorName')) || vendorCode,
+        vendorGroup,
+        itemCode,
+        itemName: text(at(r, 'itemName')),
+        level1,
+        level2: text(at(r, 'level2')),
+        level3: text(at(r, 'level3')),
+        level4: text(at(r, 'level4')),
+        origin,
+        qtyOrdered: qtyOrdered!,
+        lineValue: lineValue!,
+        openQty: null,
+        prDoc: text(at(r, 'prDoc')).replace(/\.0+$/, ''),
+        prDate: date(r, 'prDate', 'PR date'),
+        prRequiredDate: date(r, 'prRequiredDate', 'PR required date'),
+      })
+    } else {
+      const l = po[poIndex.get(key)!]
+      if (l.itemCode !== itemCode || l.qtyOrdered !== qtyOrdered) warn('Rows disagree on item or quantity for the same PO line (first row kept)')
+    }
+
+    const grpoDoc = text(at(r, 'grpoDoc')).replace(/\.0+$/, '')
+    const grpoDate = date(r, 'grpoDate', 'GRPO date')
+    const qtyReceived = num(r, 'qtyReceived') ?? 0
+    if (grpoDoc && grpoDate !== null) {
+      const rk = `${grpoDoc}|${key}`
+      if (seenReceipt.has(rk)) {
+        warn('Duplicate receipt rows (same GRPO and PO line, counted once)')
+      } else {
+        seenReceipt.add(rk)
+        grpo.push({ grpoDoc, grpoLine: '', grpoDate, vendorCode, vendorName: text(at(r, 'vendorName')), itemCode, qtyReceived, poDoc, poLine })
+        const qtyReturned = num(r, 'qtyReturned') ?? 0
+        if (qtyReturned > 0) {
+          returns.push({ returnDoc: grpoDoc, returnDate: date(r, 'returnDate', 'return date') ?? grpoDate, vendorCode, itemCode, qtyReturned })
+        }
+      }
+    } else if (qtyReceived > 0) {
+      warn('Received quantity without a GRPO number or date (not counted as a receipt)')
+    }
+  }
+
+  const skipped = Object.values(reasons).reduce((a, b) => a + b, 0)
+  return {
+    data: { po, grpo, returns },
+    report: { sourceRows: sheet.rows.length, skipped, reasons, poLines: po.length, receipts: grpo.length, returns: returns.length, warnings, originByGroup },
+  }
 }

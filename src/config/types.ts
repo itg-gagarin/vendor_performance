@@ -207,6 +207,7 @@ export interface AppConfig {
   // ---- Data mapping ------------------------------------------------------
   data: {
     fieldAliases: {
+      flat: FieldAliases
       po: FieldAliases
       grpo: FieldAliases
       returns: FieldAliases
@@ -214,6 +215,8 @@ export interface AppConfig {
     importValues: string[]
     localValues: string[]
     defaultOrigin: Origin
+    /** Vendor groups left out of every scope, median and rank (non-material vendors). */
+    excludedVendorGroups: string[]
     dateOrder: 'auto' | 'DMY' | 'MDY' | 'YMD'
   }
 
@@ -226,6 +229,9 @@ export interface Labels {
   tabs: { scorecard: string; issues: string; config: string; how: string; upload: string }
   scope: {
     vendorGroup: string
+    allGroups: string
+    chooseFirst: string
+    clear: string
     level1: string
     level2: string
     level3: string

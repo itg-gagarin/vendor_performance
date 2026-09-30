@@ -69,6 +69,12 @@ export function ConfigTab({ draft, setDraft, dirty, onSave, onDiscard, prepared,
     return out
   }, [prepared])
 
+  const groupCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const l of prepared?.po ?? []) m.set(l.vendorGroup, (m.get(l.vendorGroup) ?? 0) + 1)
+    return [...m.entries()].sort((a, b) => b[1] - a[1])
+  }, [prepared])
+
   const impact = (() => {
     if (!appliedRes || !draftRes) return null
     const lateCount = (r: ScopeResult) => r.rows.filter((x) => x.flags.some((fl) => fl.key === 'late')).length
@@ -100,6 +106,7 @@ export function ConfigTab({ draft, setDraft, dirty, onSave, onDiscard, prepared,
   }
 
   const nav: [string, string][] = [
+    ['cf-groups', C.groupsTitle],
     ['cf-allowance', C.allowanceTitle],
     ['cf-ontime', C.onTimeTitle],
     ['cf-issues', C.issuesTitle],
@@ -170,6 +177,31 @@ export function ConfigTab({ draft, setDraft, dirty, onSave, onDiscard, prepared,
         </nav>
 
         <div className="stack-section" style={{ minWidth: 0 }}>
+          <Section id="cf-groups" title={C.groupsTitle} hint={C.groupsHint}>
+            {!prepared ? (
+              <span className="small muted">{cfg.labels.empty.noData}</span>
+            ) : (
+              <div className="form-grid">
+                {groupCounts.map(([g, n]) => (
+                  <Toggle
+                    key={g}
+                    checked={!draft.data.excludedVendorGroups.includes(g)}
+                    onChange={(on) =>
+                      edit((d) => {
+                        d.data.excludedVendorGroups = on ? d.data.excludedVendorGroups.filter((x) => x !== g) : [...d.data.excludedVendorGroups, g]
+                      })
+                    }
+                    label={
+                      <span>
+                        {g || '(no group)'} <span className="mono muted">{f.fmt(n, 'int')}</span>
+                      </span>
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </Section>
+
           {/* CF-1 */}
           <Section id="cf-allowance" title={C.allowanceTitle} hint={C.allowanceHint}>
             {!draftClock || draftClock.allowances.length === 0 ? (

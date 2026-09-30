@@ -108,13 +108,19 @@ button, input, select, textarea {
 .topbar-spacer { flex: 1; }
 
 .scopebar {
-  background: var(--surface-card);
-  border-bottom: 1px solid var(--border-default);
-  padding: var(--space-2) var(--page);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+  align-items: end;
   gap: var(--gap);
+}
+.scope-field .select { width: 100%; }
+.scope-field .select:disabled { color: var(--text-faint); background-color: var(--surface-sunken); cursor: not-allowed; }
+.scope-actions { padding-bottom: 0; }
+@media (max-width: 1100px) {
+  .scopebar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .scopebar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .tabs {

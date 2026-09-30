@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Database, FileDown, FileSpreadsheet, Trash2, Upload } from 'lucide-react'
-import { autoMap, convert, guessTable, readFile, type RawSheet } from '../data/parse'
+import { autoMap, convert, convertFlat, guessTable, readFile, type RawSheet } from '../data/parse'
 import { FIELDS, type Dataset, type TableKey } from '../data/schema'
 import { interpolate } from '../engine/compute'
 import { useUi } from '../ui/context'
@@ -21,7 +21,20 @@ interface Staged {
   map: Record<string, number>
 }
 
-const TABLES: TableKey[] = ['po', 'grpo', 'returns']
+const TABLES: Exclude<TableKey, 'flat'>[] = ['po', 'grpo', 'returns']
+const SHEET_TABLES: TableKey[] = ['flat', 'po', 'grpo', 'returns']
+
+interface ReportRow {
+  label: string
+  loaded: string
+  skipped: number
+  reasons: Record<string, number>
+}
+interface Report {
+  rows: ReportRow[]
+  warnings: Record<string, number>
+  originByGroup: Record<string, string>
+}
 
 export function UploadTab({ dataset, onLoad, onDemo, onClear }: Props) {
   const { cfg, f } = useUi()
@@ -29,7 +42,7 @@ export function UploadTab({ dataset, onLoad, onDemo, onClear }: Props) {
   const [staged, setStaged] = useState<Staged[]>([])
   const [drag, setDrag] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [report, setReport] = useState<{ table: TableKey; rows: number; skipped: number; reasons: Record<string, number>; originDefaulted: number }[] | null>(null)
+  const [report, setReport] = useState<Report | null>(null)
 
   const addFiles = async (files: FileList | File[]) => {
     setError(null)
@@ -55,26 +68,47 @@ export function UploadTab({ dataset, onLoad, onDemo, onClear }: Props) {
 
   const byTable = (t: TableKey) => staged.filter((s) => s.table === t)
   const missing = staged.flatMap((s) => (s.table ? FIELDS[s.table].filter((fd) => fd.required && (s.map[fd.key] ?? -1) < 0).map((fd) => `${s.sheet.name}: ${fd.label}`) : []))
-  const canLoad = byTable('po').length > 0 && byTable('grpo').length > 0 && missing.length === 0
+  const hasFlat = byTable('flat').length > 0
+  const canLoad = (hasFlat || (byTable('po').length > 0 && byTable('grpo').length > 0)) && missing.length === 0
 
   const load = () => {
     const ds: Dataset = { po: [], grpo: [], returns: [], source: [...new Set(staged.filter((s) => s.table).map((s) => s.file))].join(', '), loadedAt: new Date().toISOString(), isDemo: false }
-    const rep: NonNullable<typeof report> = []
+    const rep: Report = { rows: [], warnings: {}, originByGroup: {} }
+    const merge = (into: Record<string, number>, from: Record<string, number>) => {
+      for (const [k, v] of Object.entries(from)) into[k] = (into[k] ?? 0) + v
+    }
+    for (const s of byTable('flat')) {
+      const { data, report: r } = convertFlat(s.sheet, s.map, cfg)
+      ds.po.push(...data.po)
+      ds.grpo.push(...data.grpo)
+      ds.returns.push(...data.returns)
+      rep.rows.push({
+        label: `${U.flatTitle} · ${s.sheet.name}`,
+        loaded: `${f.fmt(r.sourceRows - r.skipped, 'int')} rows → ${f.fmt(r.poLines, 'int')} PO lines · ${f.fmt(r.receipts, 'int')} receipts · ${f.fmt(r.returns, 'int')} returns`,
+        skipped: r.skipped,
+        reasons: r.reasons,
+      })
+      merge(rep.warnings, r.warnings)
+      Object.assign(rep.originByGroup, r.originByGroup)
+    }
     for (const t of TABLES) {
+      const sheets = byTable(t)
+      if (sheets.length === 0) continue
       let rows = 0
       let skipped = 0
       let originDefaulted = 0
       const reasons: Record<string, number> = {}
-      for (const s of byTable(t)) {
+      for (const s of sheets) {
         // Overloads need a literal table; dispatch explicitly.
         const r = t === 'po' ? convert('po', s.sheet, s.map, cfg) : t === 'grpo' ? convert('grpo', s.sheet, s.map, cfg) : convert('returns', s.sheet, s.map, cfg)
         ;(ds[t] as unknown[]).push(...r.rows)
         rows += r.rows.length
         skipped += r.skipped
         originDefaulted += r.originDefaulted
-        for (const [k, v] of Object.entries(r.reasons)) reasons[k] = (reasons[k] ?? 0) + v
+        merge(reasons, r.reasons)
       }
-      rep.push({ table: t, rows, skipped, reasons, originDefaulted })
+      if (originDefaulted) rep.warnings[`Origin blank or unrecognised, read as ${cfg.data.defaultOrigin}`] = originDefaulted
+      rep.rows.push({ label: U[`${t}Title`], loaded: f.fmt(rows, 'int'), skipped, reasons })
     }
     setReport(rep)
     onLoad(ds)
@@ -120,7 +154,7 @@ export function UploadTab({ dataset, onLoad, onDemo, onClear }: Props) {
           </div>
         </div>
         <div className="grid-2" style={{ gap: 'var(--gap)' }}>
-          {TABLES.map((t) => (
+          {SHEET_TABLES.map((t) => (
             <div key={t} className="stack" style={{ gap: 2 }}>
               <span style={{ fontWeight: 500 }}>{U[`${t}Title`]}</span>
               <span className="small muted">{U[`${t}Hint`]}</span>
@@ -163,7 +197,7 @@ export function UploadTab({ dataset, onLoad, onDemo, onClear }: Props) {
               <span className="row-tight">
                 <select className="select" value={s.table} aria-label="Table" onChange={(e) => setTable(i, e.target.value as TableKey | '')}>
                   <option value="">Ignore this sheet</option>
-                  {TABLES.map((t) => (
+                  {SHEET_TABLES.map((t) => (
                     <option key={t} value={t}>
                       {U[`${t}Title`]}
                     </option>
@@ -200,7 +234,11 @@ export function UploadTab({ dataset, onLoad, onDemo, onClear }: Props) {
         {staged.length > 0 && (
           <div className="row" style={{ justifyContent: 'space-between' }}>
             <span className="small muted">
-              {missing.length > 0 ? `${U.missingRequired} (${missing.slice(0, 3).join(', ')}${missing.length > 3 ? '…' : ''})` : byTable('po').length === 0 || byTable('grpo').length === 0 ? 'PO lines and GRPO lines are both required.' : ''}
+              {missing.length > 0
+                ? `${U.missingRequired} (${missing.slice(0, 3).join(', ')}${missing.length > 3 ? '…' : ''})`
+                : !canLoad
+                  ? 'Assign a combined extract, or both PO lines and GRPO lines.'
+                  : ''}
             </span>
             <button className="btn btn-advance" disabled={!canLoad} onClick={load}>
               <Database size={16} /> {cfg.labels.actions.loadData}
@@ -216,26 +254,46 @@ export function UploadTab({ dataset, onLoad, onDemo, onClear }: Props) {
             <table className="dt">
               <thead>
                 <tr>
-                  <th>Table</th>
-                  <th className="num">Rows loaded</th>
+                  <th>Source</th>
+                  <th>Loaded</th>
                   <th className="num">Rows skipped</th>
                   <th>Why skipped</th>
-                  <th className="num">Origin defaulted</th>
                 </tr>
               </thead>
               <tbody>
-                {report.map((r) => (
-                  <tr key={r.table}>
-                    <td>{U[`${r.table}Title`]}</td>
-                    <td className="num mono">{f.fmt(r.rows, 'int')}</td>
+                {report.rows.map((r) => (
+                  <tr key={r.label}>
+                    <td>{r.label}</td>
+                    <td className="mono">{r.loaded}</td>
                     <td className="num mono">{f.fmt(r.skipped, 'int')}</td>
                     <td className="small" style={{ whiteSpace: 'normal' }}>{Object.entries(r.reasons).map(([k, v]) => `${k}: ${v}`).join(' · ') || '—'}</td>
-                    <td className="num mono">{r.table === 'po' ? f.fmt(r.originDefaulted, 'int') : '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          {Object.keys(report.warnings).length > 0 && (
+            <div className="stack" style={{ gap: 'var(--space-1)' }}>
+              <span className="label">Data-quality notes</span>
+              {Object.entries(report.warnings).map(([k, v]) => (
+                <span key={k} className="small note-warn">
+                  <span className="mono">{f.fmt(v, 'int')}</span> × {k}
+                </span>
+              ))}
+            </div>
+          )}
+          {Object.keys(report.originByGroup).length > 0 && (
+            <div className="stack" style={{ gap: 'var(--space-1)' }}>
+              <span className="label">Origin read from vendor group</span>
+              <div className="row-tight">
+                {Object.entries(report.originByGroup).sort().map(([g, o]) => (
+                  <span key={g} className="tag">
+                    {g} → {o}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

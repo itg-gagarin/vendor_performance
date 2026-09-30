@@ -118,19 +118,29 @@ export default function App() {
       return next
     })
 
-  const scopeSelect = (k: keyof Scope, label: string, options: string[]) => (
-    <label className="field" key={k}>
+  const scopeSelect = (k: keyof Scope, label: string, options: string[], locked: string | null, allLabel: string) => (
+    <label className="field scope-field" key={k}>
       <span className="label">{label}</span>
-      <select className="select" value={scope[k]} onChange={(e) => setLevel(k, e.target.value)} disabled={options.length === 0} style={{ minWidth: 140, maxWidth: 220 }}>
-        <option value="">{L.scope.all}</option>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
+      <select className="select" value={scope[k]} onChange={(e) => setLevel(k, e.target.value)} disabled={locked !== null}>
+        {locked !== null ? (
+          <option value="">{locked}</option>
+        ) : (
+          <>
+            <option value="">{allLabel}</option>
+            {options.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </>
+        )}
       </select>
     </label>
   )
+  const lockedUntil = (n: number, parent: string) => (parent ? null : interpolate(L.scope.chooseFirst, { n }))
+  const excludedGroups = new Set(cfg.data.excludedVendorGroups)
+  const scopeActive = Object.values(scope).some(Boolean)
+  const showScope = prepared && (tab === 'scorecard' || tab === 'issues' || tab === 'config')
 
   const needsData = !dataset || !res || !prepared
   const themeIcon = theme === 'light' ? <Sun size={16} /> : theme === 'dark' ? <Moon size={16} /> : <SunMoon size={16} />
@@ -173,19 +183,6 @@ export default function App() {
           </button>
         </header>
 
-        {prepared && (
-          <div className="scopebar">
-            {scopeSelect('vendorGroup', L.scope.vendorGroup, prepared.tree.groups)}
-            {scopeSelect('level1', L.scope.level1, prepared.level1s)}
-            {scopeSelect('level2', L.scope.level2, l2)}
-            {scopeSelect('level3', L.scope.level3, l3)}
-            {scopeSelect('level4', L.scope.level4, l4)}
-            <span style={{ paddingBottom: 10 }}>
-              <Help tip={L.scope.tip} />
-            </span>
-          </div>
-        )}
-
         <nav className="tabs" role="tablist" aria-label="Sections">
           {TABS.map((t) => (
             <button key={t} role="tab" className="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
@@ -197,6 +194,21 @@ export default function App() {
         </nav>
 
         <main id="main" className="main">
+          {showScope && prepared && (
+            <div className="card scopebar" role="search" aria-label="Scope">
+              {scopeSelect('vendorGroup', L.scope.vendorGroup, prepared.tree.groups.filter((g) => !excludedGroups.has(g)), null, L.scope.allGroups)}
+              {scopeSelect('level1', L.scope.level1, prepared.level1s, null, L.scope.all)}
+              {scopeSelect('level2', L.scope.level2, l2, lockedUntil(1, scope.level1), L.scope.all)}
+              {scopeSelect('level3', L.scope.level3, l3, lockedUntil(2, scope.level2), L.scope.all)}
+              {scopeSelect('level4', L.scope.level4, l4, lockedUntil(3, scope.level3), L.scope.all)}
+              <span className="row-tight scope-actions">
+                <button className="btn" onClick={() => setScope(EMPTY_SCOPE)} disabled={!scopeActive}>
+                  {L.scope.clear}
+                </button>
+                <Help tip={L.scope.tip} />
+              </span>
+            </div>
+          )}
           {booting ? null : needsData && (tab === 'scorecard' || tab === 'issues') ? (
             <div className="card">
               <div className="empty">
