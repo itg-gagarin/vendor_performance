@@ -308,6 +308,7 @@ button, input, select, textarea {
 .select option { background: var(--surface-card); color: var(--text-default); }
 .input:focus, .select:focus, textarea:focus { border-color: var(--brand-advance); box-shadow: 0 0 0 1px var(--brand-advance); outline: none; }
 .input-sm { height: 30px; padding: 0 var(--space-2); }
+.select.input-sm { padding-right: var(--space-8); background-position: right var(--space-2) center; }
 .input.mono, .input-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 13px; }
 .input-num { text-align: right; width: 88px; }
 .input[aria-invalid='true'] { border-color: var(--status-red); }

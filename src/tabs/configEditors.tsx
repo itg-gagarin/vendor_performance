@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import { DEFAULT_CONFIG } from '../config/defaults'
 import { FORMAT_KEYS, METRICS, METRIC_KEYS } from '../config/metrics'
 import { flattenLabels, setPath } from '../config/store'
-import type { AppConfig, ColumnConfig, Measure, Origin, TileConfig, Tone, VerdictBand } from '../config/types'
+import { SIGNED_MEASURES, type AppConfig, type ColumnConfig, type Measure, type Origin, type TileConfig, type Tone, type VerdictBand } from '../config/types'
 import { binLabels, histogram } from '../engine/stats'
 import { useUi } from '../ui/context'
 import { Histogram } from '../ui/Histogram'
@@ -54,7 +54,8 @@ export function BinEditor({ draft, edit, values }: { draft: AppConfig; edit: Edi
               const edges = draft.bins[m][o]
               const setEdges = (next: number[]) =>
                 edit((d) => {
-                  d.bins[m][o] = [...new Set(next.filter((x) => Number.isFinite(x) && x >= 0))].sort((a, b) => a - b)
+                  const signed = SIGNED_MEASURES.includes(m)
+                  d.bins[m][o] = [...new Set(next.filter((x) => Number.isFinite(x) && (signed || x >= 0)))].sort((a, b) => a - b)
                 })
               return (
                 <div key={o} className="stack" style={{ gap: 'var(--space-2)' }}>
@@ -69,7 +70,7 @@ export function BinEditor({ draft, edit, values }: { draft: AppConfig; edit: Edi
                       <span key={`${i}-${e}`} className="edge-chip">
                         <input
                           defaultValue={e}
-                          inputMode="numeric"
+                          inputMode={SIGNED_MEASURES.includes(m) ? 'text' : 'numeric'}
                           aria-label={`Edge ${i + 1}`}
                           onBlur={(ev) => {
                             const v = Number(ev.target.value)

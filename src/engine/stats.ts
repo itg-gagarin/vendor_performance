@@ -52,9 +52,15 @@ export function binIndex(value: number, edges: number[]): number {
 
 export function binLabels(edges: number[], suffix = ' d'): string[] {
   if (edges.length === 0) return ['All']
-  const out = [`≤ ${edges[0]}${suffix}`]
-  for (let i = 1; i < edges.length; i++) out.push(`${edges[i - 1] + 1}–${edges[i]}${suffix}`)
-  out.push(`> ${edges[edges.length - 1]}${suffix}`)
+  // A true minus sign reads better than a hyphen; ranges that cross or sit below zero use "to".
+  const n = (x: number) => (x < 0 ? `−${-x}` : String(x))
+  const out = [`≤ ${n(edges[0])}${suffix}`]
+  for (let i = 1; i < edges.length; i++) {
+    const lo = edges[i - 1] + 1
+    const hi = edges[i]
+    out.push(lo === hi ? `${n(hi)}${suffix}` : lo < 0 ? `${n(lo)} to ${n(hi)}${suffix}` : `${lo}–${hi}${suffix}`)
+  }
+  out.push(`> ${n(edges[edges.length - 1])}${suffix}`)
   return out
 }
 

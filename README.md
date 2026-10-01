@@ -47,12 +47,15 @@ With the default vendor-group exclusions this reproduces all six PRD allowance e
 
 | Area | What can be changed |
 |------|---------------------|
-| Formulas | clock (PO→GRPO / PR→GRPO), required-date pass route, allowance per Level 1 × origin (empty = extract median), fallback allowance, lead statistic (mean/median), fill cap per line, weights 0–5, tie method, missing-value rank, rank population, top-spend share |
-| Verdicts & flags | every edge (fast multiple, complete %, on-time %, late %, slow ×, short-fill %, serious %, returns %, still-in-use days, thin sample), words, colours, flag labels, reason templates, on/off |
+| Formulas | clock (PO→GRPO / PR→GRPO), required-date pass route, allowance per Level 1 × origin (empty = extract median), fallback allowance, lead statistic (mean/median), fill cap per line, weights 0–5 for Lead time, Fill, On time and vs Required date (GRPO − PR required date; weight 0 by default), tie method, missing-value rank, rank population |
+| Verdict formulas | lead-time reference R (scope median, or median of the vendor's own materials × origin), Fast / Typical multiples of R, Complete / Near-full %, On-time / Mixed %, By-required-date / Slightly-late days. Independent of the issue thresholds |
+| Issue flags | late %, slow × R, short-fill % and serious %, returns %, thin sample, words, colours, reason templates, on/off |
+| Share | basis (number of POs (default), PO lines, or spend), share of the vendor's own vendor group (default) or the whole scope, inside the selected Level 1–4; top share % |
+| Still in use | reference date (newest PO in data, newest PO or GRPO, today, or a fixed date), activity (last PO, last GRPO, or either), window in days, optional "open PO lines count as in use". Each vendor shows the rule applied to its own dates |
 | Cards | label, metric (from `src/config/metrics.ts`), format, hint template with `{metric}` placeholders, tooltip, accent rule, order, visibility, add/remove |
 | Columns | header, tooltip purpose / formula / SAP source, order, visibility |
 | Labels | every visible string (search-and-edit table) |
-| Bins | edges per measure × origin, with a preview histogram |
+| Bins | edges per measure × origin (PR→Required, PR→PO, PO→GRPO, Required date→GRPO, which accepts negative edges), with a preview histogram |
 | Format | locale, currency prefix, compact units (rb / jt / M / T), decimals, date style |
 | Data mapping | header aliases per field, Import/Local values, date order |
 

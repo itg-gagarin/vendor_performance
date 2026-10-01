@@ -49,10 +49,13 @@ export function Scorecard({ res, minPoLines, setMinPoLines, onOpen, onCopy, scop
     lead: { num: true, sort: (r) => (mode === 'ranks' ? r.lead.rank : r.lead.value), render: (r) => <CritCell c={r.lead} kind="days" mode={mode} />, tdClass: 'cell-crit' },
     fill: { num: true, sort: (r) => (mode === 'ranks' ? r.fill.rank : r.fill.value), render: (r) => <CritCell c={r.fill} kind="pct" mode={mode} />, tdClass: 'cell-crit' },
     onTime: { num: true, sort: (r) => (mode === 'ranks' ? r.onTime.rank : r.onTime.value), render: (r) => <CritCell c={r.onTime} kind="pct" mode={mode} />, tdClass: 'cell-crit' },
+    reqSlip: { num: true, sort: (r) => (mode === 'ranks' ? r.reqSlip.rank : r.reqSlip.value), render: (r) => <CritCell c={r.reqSlip} kind="signedDays" mode={mode} />, tdClass: 'cell-crit' },
     score: { num: true, sort: (r) => r.score, render: (r) => <span className="mono">{r.score === null ? '—' : f.num(r.score, Number.isInteger(r.score) ? 0 : 1)}</span> },
     issues: { sort: (r) => (r.severity === 'serious' ? 2 : r.severity ? 1 : 0), render: (r) => <FlagPills r={r} /> },
     lastPo: { num: true, sort: (r) => r.lastPo, render: (r) => <span className="mono">{f.fmt(r.lastPo, 'date')}</span> },
     value: { num: true, sort: (r) => r.value, render: (r) => <span className="mono">{f.fmt(r.value, 'money')}</span> },
+    poCount: { num: true, sort: (r) => r.poCount, render: (r) => <span className="mono">{f.fmt(r.poCount, 'int')}</span> },
+    share: { num: true, sort: (r) => r.share, render: (r) => <span className="mono">{f.fmt(r.share, 'pct')}</span> },
     cumShare: { num: true, sort: (r) => r.cumShare, render: (r) => <span className="mono">{f.fmt(r.cumShare, 'pct')}</span> },
     poLines: { num: true, sort: (r) => r.poLines, render: (r) => <span className="mono">{f.fmt(r.poLines, 'int')}</span> },
     receipts: { num: true, sort: (r) => r.receipts, render: (r) => <span className="mono">{f.fmt(r.receipts, 'int')}</span> },
@@ -63,15 +66,17 @@ export function Scorecard({ res, minPoLines, setMinPoLines, onOpen, onCopy, scop
 
   const copy = () => {
     const out = sortedRef.current
-    const header = ['Rank', 'Vendor code', 'Vendor name', 'Group', 'Lead time (d)', 'Lead verdict', 'Fill', 'Fill verdict', 'On time', 'On-time verdict', 'Score', 'Issues', 'Last PO', 'Value', 'Cum. share', 'PO lines', 'Receipts']
+    const header = ['Rank', 'Vendor code', 'Vendor name', 'Group', 'Lead time (d)', 'Lead verdict', 'Fill', 'Fill verdict', 'On time', 'On-time verdict', 'vs Required (d)', 'vs Required verdict', 'Score', 'Issues', 'Status', 'Last PO', 'Value', 'POs', 'Share', 'Cum. share', 'PO lines', 'Receipts']
     const lines = out.map((r) =>
       [
         r.rank ?? '', r.code, r.name, r.group,
         r.lead.value?.toFixed(1) ?? '', r.lead.verdict,
         r.fill.value !== null ? (r.fill.value * 100).toFixed(1) + '%' : '', r.fill.verdict,
         r.onTime.value !== null ? (r.onTime.value * 100).toFixed(1) + '%' : '', r.onTime.verdict,
+        r.reqSlip.value?.toFixed(1) ?? '', r.reqSlip.verdict,
         r.score ?? '', r.flags.map((x) => `${cfg.issues.flags[x.key].label}: ${x.reason}`).join('; '),
-        f.fmt(r.lastPo, 'date'), Math.round(r.value), (r.cumShare * 100).toFixed(1) + '%', r.poLines, r.receipts,
+        r.stillInUse ? L.legend.stillInUse : L.legend.notInUse,
+        f.fmt(r.lastPo, 'date'), Math.round(r.value), r.poCount, (r.share * 100).toFixed(1) + '%', (r.cumShare * 100).toFixed(1) + '%', r.poLines, r.receipts,
       ].join('\t'),
     )
     onCopy([header.join('\t'), ...lines].join('\n'), out.length)

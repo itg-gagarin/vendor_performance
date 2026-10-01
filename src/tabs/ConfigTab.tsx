@@ -106,6 +106,9 @@ export function ConfigTab({ draft, setDraft, dirty, onSave, onDiscard, prepared,
     ['cf-weights', C.weightsTitle],
     ['cf-review', C.reviewTitle],
     ['cf-ranking', C.scoringTitle],
+    ['cf-verdict-formulas', C.verdictFormulasTitle],
+    ['cf-share', C.shareTitle],
+    ['cf-inuse', C.inUseTitle],
     ['cf-bins', C.binsTitle],
   ]
   const nav2: [string, string][] = [
@@ -282,7 +285,6 @@ export function ConfigTab({ draft, setDraft, dirty, onSave, onDiscard, prepared,
               <Field label={C.shortFillPct}><NumberInput value={I.shortFillPct} min={1} max={100} onChange={(v) => v !== null && edit((d) => (d.issues.shortFillPct = v))} /></Field>
               <Field label={C.shortFillSeriousPct}><NumberInput value={I.shortFillSeriousPct} min={0} max={100} onChange={(v) => v !== null && edit((d) => (d.issues.shortFillSeriousPct = v))} /></Field>
               <Field label={C.returnsPct}><NumberInput value={I.returnsPct} min={0} max={100} step={0.1} onChange={(v) => v !== null && edit((d) => (d.issues.returnsPct = v))} /></Field>
-              <Field label={C.stillInUseDays}><NumberInput value={I.stillInUseDays} min={1} max={400} onChange={(v) => v !== null && edit((d) => (d.issues.stillInUseDays = v))} /></Field>
               <Field label={C.thinSample}><NumberInput value={I.thinSample} min={1} onChange={(v) => v !== null && edit((d) => (d.issues.thinSample = Math.round(v)))} /></Field>
             </div>
             <div className="table-frame no-max">
@@ -320,12 +322,13 @@ export function ConfigTab({ draft, setDraft, dirty, onSave, onDiscard, prepared,
           <Section id="cf-weights" title={C.weightsTitle} hint={C.weightsHint}>
             {CRITERIA.map((c: Criterion) => (
               <div key={c} className="weight-row">
-                <span style={{ width: 96, fontWeight: 500 }}>{cfg.columns.scorecard.find((x) => x.id === c)?.label}</span>
+                <span style={{ width: 140, fontWeight: 500 }}>{cfg.labels.criteria[c]}</span>
                 <input type="range" min={0} max={5} step={1} value={draft.scoring.weights[c]} aria-label={`${c} weight`} onChange={(e) => edit((d) => (d.scoring.weights[c] = Number(e.target.value)))} />
                 <span className="mono" style={{ width: 24, textAlign: 'right' }}>{draft.scoring.weights[c]}</span>
               </div>
             ))}
             {weightsZero && <span className="field-error">{C.weightsZero}</span>}
+            <span className="small muted">A weight of 0 keeps the criterion visible (column, verdict, colour) but leaves it out of the score.</span>
           </Section>
 
           {/* CF-6 */}
@@ -367,20 +370,122 @@ export function ConfigTab({ draft, setDraft, dirty, onSave, onDiscard, prepared,
                   <option value="median">Median</option>
                 </select>
               </Field>
-              <Field label="Top spend share (%)" tip="Used by the Top share filter and the Cum. share column.">
-                <NumberInput value={draft.spend.topSharePct} min={1} max={100} onChange={(v) => v !== null && edit((d) => (d.spend.topSharePct = v))} />
-              </Field>
-              <Field label="Fast at or below (× scope median)">
-                <NumberInput value={draft.verdicts.lead.fastMultiple} min={0} max={1} step={0.05} onChange={(v) => v !== null && edit((d) => (d.verdicts.lead.fastMultiple = v))} />
-              </Field>
-              <Field label="Fill complete at (%)">
-                <NumberInput value={draft.verdicts.fill.completeAt} min={0} max={100} step={0.1} onChange={(v) => v !== null && edit((d) => (d.verdicts.fill.completeAt = v))} />
-              </Field>
-              <Field label="On time at (%)">
-                <NumberInput value={draft.verdicts.onTime.onTimeAt} min={0} max={100} onChange={(v) => v !== null && edit((d) => (d.verdicts.onTime.onTimeAt = v))} />
-              </Field>
             </div>
             <Toggle checked={draft.scoring.capFillAtOrdered} onChange={(v) => edit((d) => (d.scoring.capFillAtOrdered = v))} label={C.capFill} tip="Off (PRD): over-delivery on one line can offset short delivery on another. On: each line counts at most 100%." />
+          </Section>
+
+          <Section id="cf-verdict-formulas" title={C.verdictFormulasTitle} hint={C.verdictFormulasHint}>
+            <div className="grid-2">
+              <div className="stack">
+                <span className="label">{cfg.labels.criteria.lead}</span>
+                <Field label="Compare lead time with (R)" tip="Scope median (PRD): the median of vendor lead times in the selected scope. Median of its own materials: for each receipt, the extract median of its Level 1 material and origin, averaged over the vendor's receipts. The second avoids judging a Sparepart vendor against Hardware import times when the scope mixes categories. The Slow flag uses the same R.">
+                  <select className="select" value={draft.verdicts.lead.basis} onChange={(e) => edit((d) => (d.verdicts.lead.basis = e.target.value as AppConfig['verdicts']['lead']['basis']))}>
+                    <option value="scopeMedian">Scope median (PRD)</option>
+                    <option value="mixMedian">Median of its own materials</option>
+                  </select>
+                </Field>
+                <div className="row">
+                  <Field label={`${draft.verdicts.lead.fast.label} at or below (× R)`}>
+                    <NumberInput value={draft.verdicts.lead.fastMultiple} min={0} step={0.05} onChange={(v) => v !== null && edit((d) => (d.verdicts.lead.fastMultiple = v))} />
+                  </Field>
+                  <Field label={`${draft.verdicts.lead.typical.label} at or below (× R)`}>
+                    <NumberInput value={draft.verdicts.lead.slowMultiple} min={0} step={0.05} onChange={(v) => v !== null && edit((d) => (d.verdicts.lead.slowMultiple = v))} />
+                  </Field>
+                </div>
+                <span className="label">{cfg.labels.criteria.fill}</span>
+                <div className="row">
+                  <Field label={`${draft.verdicts.fill.complete.label} at or above (%)`}>
+                    <NumberInput value={draft.verdicts.fill.completeAt} min={0} max={100} step={0.1} onChange={(v) => v !== null && edit((d) => (d.verdicts.fill.completeAt = v))} />
+                  </Field>
+                  <Field label={`${draft.verdicts.fill.near.label} at or above (%)`}>
+                    <NumberInput value={draft.verdicts.fill.nearAt} min={0} max={100} step={0.1} onChange={(v) => v !== null && edit((d) => (d.verdicts.fill.nearAt = v))} />
+                  </Field>
+                </div>
+              </div>
+              <div className="stack">
+                <span className="label">{cfg.labels.criteria.onTime}</span>
+                <div className="row">
+                  <Field label={`${draft.verdicts.onTime.onTime.label} at or above (%)`}>
+                    <NumberInput value={draft.verdicts.onTime.onTimeAt} min={0} max={100} onChange={(v) => v !== null && edit((d) => (d.verdicts.onTime.onTimeAt = v))} />
+                  </Field>
+                  <Field label={`${draft.verdicts.onTime.mixed.label} at or above (%)`}>
+                    <NumberInput value={draft.verdicts.onTime.mixedAt} min={0} max={100} onChange={(v) => v !== null && edit((d) => (d.verdicts.onTime.mixedAt = v))} />
+                  </Field>
+                </div>
+                <span className="label">{cfg.labels.criteria.reqSlip}</span>
+                <div className="row">
+                  <Field label={`${draft.verdicts.reqSlip.onDate.label} at or below (d)`} tip="Days after the PR required date. 0 = arriving on or before the required date.">
+                    <NumberInput value={draft.verdicts.reqSlip.onDateAt} min={-365} max={365} onChange={(v) => v !== null && edit((d) => (d.verdicts.reqSlip.onDateAt = v))} />
+                  </Field>
+                  <Field label={`${draft.verdicts.reqSlip.slight.label} at or below (d)`}>
+                    <NumberInput value={draft.verdicts.reqSlip.slightAt} min={-365} max={365} onChange={(v) => v !== null && edit((d) => (d.verdicts.reqSlip.slightAt = v))} />
+                  </Field>
+                </div>
+              </div>
+            </div>
+            <div className="formula">
+              {cfg.labels.criteria.lead}: {draft.verdicts.lead.fast.label} ≤ {draft.verdicts.lead.fastMultiple} × R &lt; {draft.verdicts.lead.typical.label} ≤ {draft.verdicts.lead.slowMultiple} × R &lt; {draft.verdicts.lead.slow.label}{'\n'}
+              {cfg.labels.criteria.fill}: {draft.verdicts.fill.complete.label} ≥ {draft.verdicts.fill.completeAt}% &gt; {draft.verdicts.fill.near.label} ≥ {draft.verdicts.fill.nearAt}% &gt; {draft.verdicts.fill.short.label}{'\n'}
+              {cfg.labels.criteria.onTime}: {draft.verdicts.onTime.onTime.label} ≥ {draft.verdicts.onTime.onTimeAt}% &gt; {draft.verdicts.onTime.mixed.label} ≥ {draft.verdicts.onTime.mixedAt}% &gt; {draft.verdicts.onTime.late.label}{'\n'}
+              {cfg.labels.criteria.reqSlip}: {draft.verdicts.reqSlip.onDate.label} ≤ {draft.verdicts.reqSlip.onDateAt} d &lt; {draft.verdicts.reqSlip.slight.label} ≤ {draft.verdicts.reqSlip.slightAt} d &lt; {draft.verdicts.reqSlip.late.label}
+            </div>
+          </Section>
+
+          <Section id="cf-share" title={C.shareTitle} hint={C.shareHint}>
+            <div className="form-grid">
+              <Field label="Share counts" tip="POs: distinct PO numbers with at least one line in scope. PO lines: lines in scope. Spend: Σ line total.">
+                <select className="select" value={draft.spend.basis} onChange={(e) => edit((d) => (d.spend.basis = e.target.value as AppConfig['spend']['basis']))}>
+                  <option value="poCount">Number of POs</option>
+                  <option value="poLines">Number of PO lines</option>
+                  <option value="value">Spend (line total)</option>
+                </select>
+              </Field>
+              <Field label="Share of" tip="Vendor group: each vendor against the total of its own vendor group, inside the selected item-group levels. Whole scope: against every vendor in scope.">
+                <select className="select" value={draft.spend.partition} onChange={(e) => edit((d) => (d.spend.partition = e.target.value as AppConfig['spend']['partition']))}>
+                  <option value="vendorGroup">Its vendor group</option>
+                  <option value="scope">The whole scope</option>
+                </select>
+              </Field>
+              <Field label="Top share (%)" tip="Vendors are kept until the running share reaches this value, including the vendor that crosses it.">
+                <NumberInput value={draft.spend.topSharePct} min={1} max={100} onChange={(v) => v !== null && edit((d) => (d.spend.topSharePct = v))} />
+              </Field>
+            </div>
+            <div className="formula">
+              Share(v) = {draft.spend.basis === 'poCount' ? 'POs of v' : draft.spend.basis === 'poLines' ? 'PO lines of v' : 'spend of v'} ÷ {draft.spend.basis === 'poCount' ? 'POs' : draft.spend.basis === 'poLines' ? 'PO lines' : 'spend'} of all vendors in {draft.spend.partition === 'vendorGroup' ? "v's vendor group" : 'the scope'} (selected Level 1–4){'\n'}
+              Cum. share(v) = Σ Share of v and every larger vendor {draft.spend.partition === 'vendorGroup' ? 'in the same vendor group' : 'in scope'}
+            </div>
+          </Section>
+
+          <Section id="cf-inuse" title={C.inUseTitle} hint={C.inUseHint}>
+            <div className="form-grid">
+              <Field label="Latest activity" tip="Which of the vendor's dates in scope counts as its latest activity.">
+                <select className="select" value={draft.inUse.activity} onChange={(e) => edit((d) => (d.inUse.activity = e.target.value as AppConfig['inUse']['activity']))}>
+                  <option value="lastPo">Last PO date (PRD)</option>
+                  <option value="lastGrpo">Last GRPO date</option>
+                  <option value="lastAny">Last PO or GRPO, whichever is later</option>
+                </select>
+              </Field>
+              <Field label="Measured back from" tip="Newest PO in data (PRD) keeps the verdict stable however old the extract is. Today ages vendors as time passes.">
+                <select className="select" value={draft.inUse.reference} onChange={(e) => edit((d) => (d.inUse.reference = e.target.value as AppConfig['inUse']['reference']))}>
+                  <option value="newestPo">Newest PO date in data (PRD)</option>
+                  <option value="newestActivity">Newest PO or GRPO date in data</option>
+                  <option value="today">Today</option>
+                  <option value="fixed">A fixed date</option>
+                </select>
+              </Field>
+              {draft.inUse.reference === 'fixed' && (
+                <Field label="Fixed date">
+                  <input type="date" className="input input-sm" value={draft.inUse.fixedDate} onChange={(e) => edit((d) => (d.inUse.fixedDate = e.target.value))} />
+                </Field>
+              )}
+              <Field label="Window (days)">
+                <NumberInput value={draft.inUse.days} min={1} max={1000} onChange={(v) => v !== null && edit((d) => (d.inUse.days = Math.round(v)))} />
+              </Field>
+            </div>
+            <Toggle checked={draft.inUse.openPoCounts} onChange={(v) => edit((d) => (d.inUse.openPoCounts = v))} label="A vendor with open PO lines is always still in use" />
+            <div className="formula">
+              Still in use(v) = {cfg.labels.inUse.reference[draft.inUse.reference]} − {cfg.labels.inUse.activity[draft.inUse.activity].toLowerCase()} of v in scope ≤ {draft.inUse.days} d{draft.inUse.openPoCounts ? '\n                 OR v has open PO lines' : ''}
+            </div>
           </Section>
 
           {/* CF-4 */}
@@ -391,18 +496,22 @@ export function ConfigTab({ draft, setDraft, dirty, onSave, onDiscard, prepared,
           <Section id="cf-verdicts" title={C.verdictTitle} hint="Words and colours used in criterion cells, flags and quartiles.">
             <div className="grid-2">
               <div className="stack">
-                <span className="label">Lead time</span>
-                <BandEditor band={draft.verdicts.lead.fast} rule={`≤ ${draft.verdicts.lead.fastMultiple} × M`} onChange={(b) => edit((d) => (d.verdicts.lead.fast = b))} />
-                <BandEditor band={draft.verdicts.lead.typical} rule={`≤ ${I.slowMultiple} × M`} onChange={(b) => edit((d) => (d.verdicts.lead.typical = b))} />
+                <span className="label">{cfg.labels.criteria.lead}</span>
+                <BandEditor band={draft.verdicts.lead.fast} rule={`≤ ${draft.verdicts.lead.fastMultiple} × R`} onChange={(b) => edit((d) => (d.verdicts.lead.fast = b))} />
+                <BandEditor band={draft.verdicts.lead.typical} rule={`≤ ${draft.verdicts.lead.slowMultiple} × R`} onChange={(b) => edit((d) => (d.verdicts.lead.typical = b))} />
                 <BandEditor band={draft.verdicts.lead.slow} rule="above" onChange={(b) => edit((d) => (d.verdicts.lead.slow = b))} />
-                <span className="label">Fill</span>
+                <span className="label">{cfg.labels.criteria.fill}</span>
                 <BandEditor band={draft.verdicts.fill.complete} rule={`≥ ${draft.verdicts.fill.completeAt}%`} onChange={(b) => edit((d) => (d.verdicts.fill.complete = b))} />
-                <BandEditor band={draft.verdicts.fill.near} rule={`≥ ${I.shortFillPct}%`} onChange={(b) => edit((d) => (d.verdicts.fill.near = b))} />
+                <BandEditor band={draft.verdicts.fill.near} rule={`≥ ${draft.verdicts.fill.nearAt}%`} onChange={(b) => edit((d) => (d.verdicts.fill.near = b))} />
                 <BandEditor band={draft.verdicts.fill.short} rule="below" onChange={(b) => edit((d) => (d.verdicts.fill.short = b))} />
-                <span className="label">On time</span>
+                <span className="label">{cfg.labels.criteria.onTime}</span>
                 <BandEditor band={draft.verdicts.onTime.onTime} rule={`≥ ${draft.verdicts.onTime.onTimeAt}%`} onChange={(b) => edit((d) => (d.verdicts.onTime.onTime = b))} />
-                <BandEditor band={draft.verdicts.onTime.mixed} rule={`≥ ${I.latePct}%`} onChange={(b) => edit((d) => (d.verdicts.onTime.mixed = b))} />
+                <BandEditor band={draft.verdicts.onTime.mixed} rule={`≥ ${draft.verdicts.onTime.mixedAt}%`} onChange={(b) => edit((d) => (d.verdicts.onTime.mixed = b))} />
                 <BandEditor band={draft.verdicts.onTime.late} rule="below" onChange={(b) => edit((d) => (d.verdicts.onTime.late = b))} />
+                <span className="label">{cfg.labels.criteria.reqSlip}</span>
+                <BandEditor band={draft.verdicts.reqSlip.onDate} rule={`≤ ${draft.verdicts.reqSlip.onDateAt} d`} onChange={(b) => edit((d) => (d.verdicts.reqSlip.onDate = b))} />
+                <BandEditor band={draft.verdicts.reqSlip.slight} rule={`≤ ${draft.verdicts.reqSlip.slightAt} d`} onChange={(b) => edit((d) => (d.verdicts.reqSlip.slight = b))} />
+                <BandEditor band={draft.verdicts.reqSlip.late} rule="above" onChange={(b) => edit((d) => (d.verdicts.reqSlip.late = b))} />
                 <Field label="No-data word">
                   <input className="input input-sm" value={draft.verdicts.noData} onChange={(e) => edit((d) => (d.verdicts.noData = e.target.value))} />
                 </Field>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG } from '../config/defaults'
-import type { AppConfig } from '../config/types'
+import { GROUP_ALL_IMPORT, GROUP_ALL_LOCAL, type AppConfig } from '../config/types'
 import { buildDemoDataset } from '../data/demo'
 import type { Dataset, GrpoLine, PoLine, ReturnLine } from '../data/schema'
 import { clockReceipts, computeScope, EMPTY_SCOPE, measureValues } from './compute'
@@ -45,6 +45,7 @@ describe('stats', () => {
     expect(binIndex(8, [7, 14])).toBe(1)
     expect(binIndex(15, [7, 14])).toBe(2)
     expect(binLabels([7, 14])).toEqual(['≤ 7 d', '8–14 d', '> 14 d'])
+    expect(binLabels([-14, -7, 0, 1])).toEqual(['≤ −14 d', '−13 to −7 d', '−6 to 0 d', '1 d', '> 1 d'])
   })
 })
 
@@ -122,7 +123,7 @@ describe('vendor formulas', () => {
     expect(a.score).toBe(3)
     expect(a.rank).toBe(1)
     expect(b.rank).toBe(2)
-    const leadOnly = computeScope(prepare(data), cfg((x) => (x.scoring.weights = { lead: 2, fill: 0, onTime: 0 })), EMPTY_SCOPE, { minPoLines: 1 })
+    const leadOnly = computeScope(prepare(data), cfg((x) => (x.scoring.weights = { lead: 2, fill: 0, onTime: 0, reqSlip: 0 })), EMPTY_SCOPE, { minPoLines: 1 })
     expect(leadOnly.rows.find((r) => r.code === 'B')!.score).toBe(4)
   })
 
@@ -164,7 +165,11 @@ describe('vendor formulas', () => {
   })
 
   it('review threshold and spend share', () => {
-    const res = computeScope(prepare(data), cfg(), EMPTY_SCOPE, { minPoLines: 1 })
+    const bySpend = (x: AppConfig) => {
+      x.spend.basis = 'value'
+      x.spend.partition = 'scope'
+    }
+    const res = computeScope(prepare(data), cfg(bySpend), EMPTY_SCOPE, { minPoLines: 1 })
     const b = res.rows.find((r) => r.code === 'B')!
     const a = res.rows.find((r) => r.code === 'A')!
     // B: 6 lines, Rp 18 jt → below both. A: Rp 5 jt → below.
@@ -173,8 +178,98 @@ describe('vendor formulas', () => {
     // B alone is 78% of spend, so A (the vendor that crosses 80%) is still inside the top 80%.
     expect(b.inTopSpend).toBe(true)
     expect(a.inTopSpend).toBe(true)
-    const narrow = computeScope(prepare(data), cfg((x) => (x.spend.topSharePct = 50)), EMPTY_SCOPE, { minPoLines: 1 })
+    const narrow = computeScope(prepare(data), cfg((x) => {
+      bySpend(x)
+      x.spend.topSharePct = 50
+    }), EMPTY_SCOPE, { minPoLines: 1 })
     expect(narrow.rows.find((r) => r.code === 'A')!.inTopSpend).toBe(false)
+  })
+
+  it('share counts POs against the vendor group inside the item-group scope (default)', () => {
+    // G1: A has 5 POs, B has 6. G2: D has 2 POs (one with two lines) and is alone in its group.
+    const d1 = po('D', 'D0', 100, 10, 1, { vendorGroup: 'G2' })
+    const d2 = { ...po('D', 'D0', 100, 10, 1, { vendorGroup: 'G2' }), poLine: '1' }
+    const d3 = po('D', 'D1', 101, 10, 1, { vendorGroup: 'G2' })
+    const res = computeScope(prepare(ds([...data.po, d1, d2, d3], data.grpo)), cfg(), EMPTY_SCOPE, { minPoLines: 1 })
+    const row = (c: string) => res.rows.find((r) => r.code === c)!
+    expect(row('A').poCount).toBe(5)
+    expect(row('D').poCount).toBe(2)
+    expect(row('B').share).toBeCloseTo(6 / 11)
+    expect(row('A').share).toBeCloseTo(5 / 11)
+    expect(row('A').cumShare).toBeCloseTo(1)
+    expect(row('D').share).toBe(1)
+    // Item-group scope narrows both numerator and denominator.
+    const other = po('A', 'A9', 120, 10, 1, { level1: 'Packaging' })
+    const scoped = computeScope(prepare(ds([...data.po, other], data.grpo)), cfg(), { ...EMPTY_SCOPE, level1: 'Packaging' }, { minPoLines: 1 })
+    expect(scoped.rows.map((r) => [r.code, r.share])).toEqual([['A', 1]])
+  })
+
+  it('All Import and All Local select vendor groups by origin', () => {
+    const imp = po('I', 'I0', 100, 10, 1, { vendorGroup: 'V. Import Production', origin: 'Import' })
+    const p = prepare(ds([...data.po, imp], data.grpo))
+    expect(computeScope(p, cfg(), { ...EMPTY_SCOPE, vendorGroup: GROUP_ALL_IMPORT }, { minPoLines: 1 }).rows.map((r) => r.code)).toEqual(['I'])
+    expect(computeScope(p, cfg(), { ...EMPTY_SCOPE, vendorGroup: GROUP_ALL_LOCAL }, { minPoLines: 1 }).rows.map((r) => r.code).sort()).toEqual(['A', 'B'])
+  })
+
+  it('required-date slip is a signed criterion with its own verdict and weight', () => {
+    // A arrives 10 d after PO with required date PO + 15 → −5 d. B arrives 20 d after PO, required PO + 12 → +8 d.
+    const withReq = ds(
+      data.po.map((l) => ({ ...l, prRequiredDate: l.poDate + (l.vendorCode === 'A' ? 15 : 12) })),
+      data.grpo,
+    )
+    const res = computeScope(prepare(withReq), cfg(), EMPTY_SCOPE, { minPoLines: 1 })
+    const a = res.rows.find((r) => r.code === 'A')!
+    const b = res.rows.find((r) => r.code === 'B')!
+    expect(a.reqSlip.value).toBe(-5)
+    expect(b.reqSlip.value).toBe(8)
+    expect(a.reqSlip.verdict).toBe('By required date')
+    expect(b.reqSlip.verdict).toBe('Late vs request')
+    expect(a.reqSlip.rank).toBe(1)
+    // Weight 0 by default: score unchanged (3 = 1 + 1 + 1).
+    expect(a.score).toBe(3)
+    const weighted = computeScope(prepare(withReq), cfg((x) => (x.scoring.weights.reqSlip = 2)), EMPTY_SCOPE, { minPoLines: 1 })
+    expect(weighted.rows.find((r) => r.code === 'B')!.score).toBe(6 + 2 * 2)
+    expect(res.metrics.avgReqSlip).toBeCloseTo((5 * -5 + 5 * 8) / 10)
+    expect(measureValues(prepare(withReq), 'requiredToGrpo', a.poIdx, a.receiptIdx)).toEqual([-5, -5, -5, -5, -5])
+  })
+
+  it('verdict edges are independent of the issue thresholds', () => {
+    const res = computeScope(prepare(data), cfg((x) => (x.verdicts.fill.nearAt = 85)), EMPTY_SCOPE, { minPoLines: 1 })
+    const b = res.rows.find((r) => r.code === 'B')!
+    expect(b.fill.verdict).toBe('Near full') // 90% ≥ 85%
+    expect(b.flags.some((f) => f.key === 'shortFill')).toBe(true) // flag still uses 95%
+  })
+
+  it('lead verdict can compare with the median of the vendor\'s own materials', () => {
+    // A is all Hardware Local; add a Packaging Local vendor P with 3-day receipts.
+    const P = [0, 1, 2, 3, 4].map((i) => po('P', `P${i}`, 100 + i, 10, 1, { level1: 'Packaging' }))
+    const grP = P.map((l) => gr('P', l.poDoc, l.poDate + 3, 10))
+    const p = prepare(ds([...data.po, ...P], [...data.grpo, ...grP]))
+    const scopeBasis = computeScope(p, cfg(), EMPTY_SCOPE, { minPoLines: 1 })
+    const mix = computeScope(p, cfg((x) => (x.verdicts.lead.basis = 'mixMedian')), EMPTY_SCOPE, { minPoLines: 1 })
+    // Scope median of (10, 20, 3) = 10 → A (10 d) is Typical. Against Hardware's own median (15 d) A is Fast.
+    expect(scopeBasis.rows.find((r) => r.code === 'A')!.lead.verdict).toBe('Typical')
+    expect(mix.rows.find((r) => r.code === 'A')!.leadReference).toBe(15)
+    expect(mix.rows.find((r) => r.code === 'A')!.lead.verdict).toBe('Fast')
+    expect(mix.rows.find((r) => r.code === 'P')!.leadReference).toBe(3)
+  })
+
+  it('still-in-use rule: reference date, activity, window and open PO lines', () => {
+    // Newest PO = day 105. C last PO day 10, last GRPO day 100.
+    const cPo = po('C', 'C0', 10, 10, 1)
+    const cGr = gr('C', 'C0', 100, 5)
+    const p = prepare(ds([...data.po, cPo], [...data.grpo, cGr]))
+    const c = (patch: (x: AppConfig) => void) => computeScope(p, cfg(patch), EMPTY_SCOPE, { minPoLines: 1 }).rows.find((r) => r.code === 'C')!
+    expect(c(() => {}).stillInUse).toBe(false)
+    expect(c(() => {}).daysSinceActivity).toBe(95)
+    expect(c(() => {}).inUseReason).toContain('95 d')
+    expect(c((x) => (x.inUse.activity = 'lastGrpo')).stillInUse).toBe(true)
+    expect(c((x) => (x.inUse.days = 100)).stillInUse).toBe(true)
+    expect(c((x) => (x.inUse.openPoCounts = true)).stillInUse).toBe(true) // 5 of 10 received → open
+    expect(c((x) => {
+      x.inUse.reference = 'fixed'
+      x.inUse.fixedDate = '1970-02-01' // day 31
+    }).daysSinceActivity).toBe(21)
   })
 
   it('min PO lines narrows the rank population', () => {

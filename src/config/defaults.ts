@@ -10,7 +10,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   version: CONFIG_VERSION,
 
   scoring: {
-    weights: { lead: 1, fill: 1, onTime: 1 },
+    // reqSlip starts at 0 so the PRD's three-criterion score is unchanged until Purchasing weights it.
+    weights: { lead: 1, fill: 1, onTime: 1, reqSlip: 0 },
     tieMethod: 'min',
     missingRank: 'worst',
     rankPopulation: 'minPoLines',
@@ -27,22 +28,33 @@ export const DEFAULT_CONFIG: AppConfig = {
 
   verdicts: {
     lead: {
+      basis: 'scopeMedian',
       fastMultiple: 0.8,
+      slowMultiple: 1.25,
       fast: { label: 'Fast', tone: 'emerald' },
       typical: { label: 'Typical', tone: 'neutral' },
       slow: { label: 'Slow', tone: 'red' },
     },
     fill: {
       completeAt: 99.5,
+      nearAt: 95,
       complete: { label: 'Complete', tone: 'emerald' },
       near: { label: 'Near full', tone: 'neutral' },
       short: { label: 'Short', tone: 'red' },
     },
     onTime: {
       onTimeAt: 90,
+      mixedAt: 60,
       onTime: { label: 'On time', tone: 'emerald' },
       mixed: { label: 'Mixed', tone: 'amber' },
       late: { label: 'Late', tone: 'red' },
+    },
+    reqSlip: {
+      onDateAt: 0,
+      slightAt: 7,
+      onDate: { label: 'By required date', tone: 'emerald' },
+      slight: { label: 'Slightly late', tone: 'amber' },
+      late: { label: 'Late vs request', tone: 'red' },
     },
     noData: 'No data',
   },
@@ -53,11 +65,10 @@ export const DEFAULT_CONFIG: AppConfig = {
     shortFillPct: 95,
     shortFillSeriousPct: 80,
     returnsPct: 0,
-    stillInUseDays: 60,
     thinSample: 5,
     flags: {
       late: { label: 'Late', reason: 'On time {value}, below {threshold}', enabled: true },
-      slow: { label: 'Slow', reason: 'Lead time {value}, above {threshold} ({multiple} × scope median {median})', enabled: true },
+      slow: { label: 'Slow', reason: 'Lead time {value}, above {threshold} ({multiple} × {basis} {median})', enabled: true },
       shortFill: { label: 'Short fill', reason: 'Order fill {value}, below {threshold}', enabled: true },
       returns: { label: 'Returns', reason: 'Returned {value} of net received qty, above {threshold}', enabled: true },
     },
@@ -69,7 +80,16 @@ export const DEFAULT_CONFIG: AppConfig = {
 
   review: { minPoLines: 10, minValue: 50_000_000, combine: 'any' },
 
-  spend: { topSharePct: 80 },
+  // Share = the vendor's number of POs ÷ all POs of its vendor group, inside the selected item-group levels.
+  spend: { topSharePct: 80, basis: 'poCount', partition: 'vendorGroup' },
+
+  inUse: {
+    reference: 'newestPo',
+    fixedDate: '',
+    activity: 'lastPo',
+    days: 60,
+    openPoCounts: false,
+  },
 
   quartiles: {
     tones: ['emerald', 'neutral', 'neutral', 'red'],
@@ -80,6 +100,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     prToRequired: { Local: [7, 14, 30, 60], Import: [14, 30, 60, 90] },
     prToPo: { Local: [1, 3, 7, 14, 30], Import: [3, 7, 14, 30, 60] },
     poToGrpo: { Local: [7, 14, 21, 30, 60], Import: [14, 30, 45, 60, 90] },
+    // Negative edges = arriving before the PR required date.
+    requiredToGrpo: { Local: [-30, -14, -7, 0, 7, 14, 30], Import: [-30, -14, 0, 14, 30, 60] },
   },
 
   filters: {
@@ -100,7 +122,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       },
       {
         id: 'value', label: 'Purchase value', metric: 'purchaseValue', format: 'money',
-        hint: '{poLines} PO lines · {top80Vendors} vendors make {topSharePct} of spend',
+        hint: '{poLines} PO lines · {top80Vendors} vendors make {topSharePct} of {shareBasisLabel}',
         tooltip: 'Σ PO line total (local currency) in scope. SAP: POR1.LineTotal.',
         accent: 'neutral', visible: true,
       },
@@ -158,21 +180,26 @@ export const DEFAULT_CONFIG: AppConfig = {
       { id: 'lead', label: 'Lead time', visible: true, tip: { purpose: 'How long the vendor takes on the configured clock.', formula: 'Σ clock days of receipts with a PO link ÷ number of those receipts', source: 'OPDN.DocDate − OPOR.DocDate (or OPRQ.DocDate), linked by PDN1.BaseEntry/BaseLine' } },
       { id: 'fill', label: 'Fill', visible: true, tip: { purpose: 'How much of what was ordered actually arrived.', formula: 'Σ received on PO lines with ≥ 1 receipt ÷ Σ ordered on those lines', source: 'PDN1.Quantity, POR1.Quantity' } },
       { id: 'onTime', label: 'On time', visible: true, tip: { purpose: 'Share of receipts that arrived inside the material allowance or by the PR required date.', formula: 'On-time receipts ÷ receipts with a PO link', source: 'OPDN.DocDate, OPOR.DocDate, PRQ1.PQTReqDate' } },
-      { id: 'score', label: 'Score', visible: true, tip: { purpose: 'Weighted sum of criterion ranks. Lower is better.', formula: 'w_lead × rank_lead + w_fill × rank_fill + w_ontime × rank_ontime', source: 'Computed' } },
+      { id: 'reqSlip', label: 'vs Required', visible: true, tip: { purpose: 'How many days after the PR required date goods arrive on average. Negative = early.', formula: 'Σ (GRPO date − PR required date) ÷ receipts with a required date', source: 'OPDN.DocDate, PRQ1.PQTReqDate' } },
+      { id: 'score', label: 'Score', visible: true, tip: { purpose: 'Weighted sum of criterion ranks. Lower is better.', formula: 'w_lead × rank_lead + w_fill × rank_fill + w_ontime × rank_ontime + w_req × rank_req', source: 'Computed' } },
       { id: 'issues', label: 'Issues', visible: true, tip: { purpose: 'Issue flags raised by the Configuration issue rules.', formula: 'Late, Slow, Short fill, Returns (see How scoring works)', source: 'Computed' } },
       { id: 'lastPo', label: 'Last PO', visible: true, tip: { purpose: 'Most recent PO date with this vendor in scope.', formula: 'max(PO date)', source: 'OPOR.DocDate' } },
       { id: 'value', label: 'Value', visible: true, tip: { purpose: 'Purchase value in scope.', formula: 'Σ PO line total', source: 'POR1.LineTotal' } },
-      { id: 'cumShare', label: 'Cum. share', visible: true, tip: { purpose: 'Running share of scope spend when vendors are sorted by value, largest first.', formula: 'Σ value of this and larger vendors ÷ scope value', source: 'Computed' } },
+      { id: 'poCount', label: 'POs', visible: true, tip: { purpose: 'Number of purchase orders with at least one line in scope.', formula: 'count(distinct PO DocNum)', source: 'OPOR.DocNum' } },
+      { id: 'share', label: 'Share', visible: true, tip: { purpose: "The vendor's share of its vendor group inside the selected item-group levels (basis set on Configuration).", formula: 'vendor POs ÷ Σ POs of all vendors in the same vendor group', source: 'Computed' } },
+      { id: 'cumShare', label: 'Cum. share', visible: true, tip: { purpose: 'Running share when vendors of the same vendor group are sorted by share, largest first.', formula: 'Σ share of this and larger vendors in the same vendor group', source: 'Computed' } },
       { id: 'poLines', label: 'PO lines', visible: true, tip: { purpose: 'Number of PO lines in scope.', formula: 'count(PO lines)', source: 'POR1' } },
       { id: 'receipts', label: 'Receipts', visible: true, tip: { purpose: 'Number of GRPO lines in scope, with or without a PO link.', formula: 'count(GRPO lines)', source: 'PDN1' } },
     ],
     issues: [
       { id: 'vendor', label: 'Vendor', visible: true, tip: { purpose: 'Vendor name, code and group.', formula: '—', source: 'OCRD, OCRG' } },
       { id: 'flags', label: 'Issues', visible: true, tip: { purpose: 'Each flag with the reason in words.', formula: 'Issue rules on the Configuration tab', source: 'Computed' } },
-      { id: 'lastPo', label: 'Last PO', visible: true, tip: { purpose: 'Most recent PO date and days before the newest PO in the data.', formula: 'newest PO date in data − vendor last PO date', source: 'OPOR.DocDate' } },
+      { id: 'status', label: 'Status', visible: true, tip: { purpose: 'Still in use or no longer used, with the rule applied.', formula: 'reference date − latest activity ≤ window (Configuration → Still in use)', source: 'OPOR.DocDate, OPDN.DocDate' } },
+      { id: 'lastPo', label: 'Last PO', visible: true, tip: { purpose: 'Most recent PO date and days before the still-in-use reference date.', formula: 'reference date − vendor last PO date', source: 'OPOR.DocDate' } },
       { id: 'onTime', label: 'On time', visible: true, tip: { purpose: 'Share of receipts on time.', formula: 'On-time receipts ÷ receipts with a PO link', source: 'OPDN, OPOR, PRQ1' } },
       { id: 'lead', label: 'Lead time', visible: true, tip: { purpose: 'Average clock days.', formula: 'Σ clock days ÷ receipts with a PO link', source: 'OPDN, OPOR' } },
       { id: 'fill', label: 'Fill', visible: true, tip: { purpose: 'Received against ordered on lines with a receipt.', formula: 'Σ received ÷ Σ ordered', source: 'PDN1, POR1' } },
+      { id: 'reqSlip', label: 'vs Required', visible: true, tip: { purpose: 'Average days after the PR required date. Negative = early.', formula: 'Σ (GRPO date − PR required date) ÷ receipts with a required date', source: 'OPDN.DocDate, PRQ1.PQTReqDate' } },
       { id: 'returns', label: 'Returns', visible: true, tip: { purpose: 'Returned quantity against net received.', formula: 'Σ returned qty ÷ (Σ received − Σ returned)', source: 'RPD1.Quantity, PDN1.Quantity' } },
       { id: 'openRows', label: 'Open rows', visible: true, tip: { purpose: 'PO lines not yet fully received.', formula: 'count(PO lines with received < ordered)', source: 'POR1.OpenQty or computed' } },
       { id: 'value', label: 'Value', visible: true, tip: { purpose: 'Purchase value in scope.', formula: 'Σ PO line total', source: 'POR1.LineTotal' } },
@@ -276,7 +303,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     app: { title: 'Vendor Performance', subtitle: 'Material vendors ranked on SAP B1 purchasing data' },
     tabs: { scorecard: 'Scorecard', issues: 'Vendors with issues', config: 'Configuration', how: 'How scoring works', upload: 'Upload' },
     scope: {
-      vendorGroup: 'Vendor group', allGroups: 'All groups', chooseFirst: 'Choose level {n} first', clear: 'Clear',
+      vendorGroup: 'Vendor group', allGroups: 'All groups', allImport: 'All Import', allLocal: 'All Local', groupsHeading: 'Vendor groups',
+      chooseFirst: 'Choose level {n} first', clear: 'Clear',
       level1: 'Level 1 · Item Group', level2: 'Level 2', level3: 'Level 3', level4: 'Level 4',
       all: 'All',
       tip: 'Scope = vendor group × material path. Ranks, medians, quartiles and the spend share are all computed inside this scope.',
@@ -285,7 +313,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       find: { label: 'Find vendor', tip: 'Matches vendor name or code. Does not change ranks.' },
       minPoLines: { label: 'Min PO lines', tip: 'Hides vendors with fewer PO lines in scope. With "Rank among: vendors passing Min PO lines", ranks are computed after this filter.' },
       reviewOnly: { label: 'Review threshold only', tip: 'Only vendors at or above the review threshold (PO lines and/or value, set on Configuration).' },
-      top80: { label: 'Top {topSharePct} of spend', tip: 'Only the largest vendors that together make up the configured share of scope spend.' },
+      top80: { label: 'Top {topSharePct} share', tip: 'Only the largest vendors that together reach the configured cumulative share (basis and grouping set on Configuration → Share).' },
       issueOnly: { label: 'Only vendors with an issue', tip: 'Only vendors carrying at least one issue flag.' },
       stillInUse: { label: 'Still in use only', tip: 'Only vendors whose last PO is within the still-in-use window of the newest PO in the data.' },
       severity: { label: 'Severity', tip: 'Serious = at least one flag of serious severity.' },
@@ -295,6 +323,18 @@ export const DEFAULT_CONFIG: AppConfig = {
       issueTypeAny: 'Any issue',
     },
     modes: { plain: 'Plain', ranks: 'Ranks', tip: 'Plain shows a verdict word and the measured value; Ranks shows each criterion rank inside the scope.' },
+    inUse: {
+      reason: '{activity} {date} is {days} d before {reference} {refDate}; window {window} d → {verdict}',
+      openReason: '{open} PO lines still open → {verdict}',
+      activity: { lastPo: 'Last PO', lastGrpo: 'Last GRPO', lastAny: 'Last PO or GRPO' },
+      reference: { newestPo: 'newest PO in data', newestActivity: 'newest PO or GRPO in data', today: 'today', fixed: 'fixed date' },
+    },
+    share: {
+      basis: { poCount: 'POs', poLines: 'PO lines', value: 'spend' },
+      partition: { vendorGroup: 'of its vendor group', scope: 'of the whole scope' },
+    },
+    criteria: { lead: 'Lead time', fill: 'Fill', onTime: 'On time', reqSlip: 'vs Required date' },
+    leadBasis: { scopeMedian: 'scope median', mixMedian: 'median of its own materials' },
     actions: {
       copyShortlist: 'Copy shortlist',
       copied: 'Copied {count} rows',
@@ -367,7 +407,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       item: 'Item',
       value: 'Value',
       qty: 'Qty',
-      measures: { prToRequired: 'PR → Required date', prToPo: 'PR → PO', poToGrpo: 'PO → GRPO' },
+      measures: { prToRequired: 'PR → Required date', prToPo: 'PR → PO', poToGrpo: 'PO → GRPO', requiredToGrpo: 'Required date → GRPO' },
       noProfile: 'No receipts with both dates for this measure.',
     },
     config: {
@@ -390,15 +430,20 @@ export const DEFAULT_CONFIG: AppConfig = {
       requiredDate: 'Arriving by the required date always counts as on time',
       issuesTitle: 'Issue rules',
       latePct: 'Late below (% on time)',
-      slowMultiple: 'Slow above (× scope median)',
+      slowMultiple: 'Slow above (× lead reference R)',
       shortFillPct: 'Short fill below (%)',
       shortFillSeriousPct: 'Short fill serious below (%)',
       returnsPct: 'Returns above (%)',
-      stillInUseDays: 'Still in use within (days of newest PO)',
       thinSample: 'Thin sample below (receipts)',
       verdictTitle: 'Verdict words',
+      verdictFormulasTitle: 'Verdict formulas',
+      verdictFormulasHint: 'Edges that turn a measured value into a verdict word. These are separate from the issue rules, so a verdict and a flag can use different thresholds.',
+      inUseTitle: 'Still in use',
+      inUseHint: 'A vendor is still in use when its latest activity is within the window before the reference date.',
+      shareTitle: 'Share and cumulative share',
+      shareHint: 'What a vendor share counts and what it is a share of. Cum. share and the Top share filter follow this.',
       binsTitle: 'Bin edges',
-      binsHint: 'Upper edge of each bin in days. The last bin is open-ended.',
+      binsHint: 'Upper edge of each bin in days. The last bin is open-ended. Required date → GRPO accepts negative edges (arrived before the required date).',
       addEdge: 'Add edge',
       resetBins: 'Reset',
       weightsTitle: 'Criterion weights',

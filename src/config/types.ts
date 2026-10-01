@@ -10,19 +10,26 @@ export type Tone = 'neutral' | 'advance' | 'commit' | 'sales' | 'amber' | 'emera
 
 export type Severity = 'serious' | 'warning'
 
-export type Criterion = 'lead' | 'fill' | 'onTime'
-export const CRITERIA: Criterion[] = ['lead', 'fill', 'onTime']
+/** reqSlip = GRPO date − PR required date (days; negative = early). */
+export type Criterion = 'lead' | 'fill' | 'onTime' | 'reqSlip'
+export const CRITERIA: Criterion[] = ['lead', 'fill', 'onTime', 'reqSlip']
 
 export type Clock = 'PO_GRPO' | 'PR_GRPO'
 
 /** Lead-time profiles shown as distributions (PRD goal 4). */
-export type Measure = 'prToRequired' | 'prToPo' | 'poToGrpo'
-export const MEASURES: Measure[] = ['prToRequired', 'prToPo', 'poToGrpo']
+export type Measure = 'prToRequired' | 'prToPo' | 'poToGrpo' | 'requiredToGrpo'
+export const MEASURES: Measure[] = ['prToRequired', 'prToPo', 'poToGrpo', 'requiredToGrpo']
+/** Measures whose values can be negative (arriving before the reference date). */
+export const SIGNED_MEASURES: Measure[] = ['requiredToGrpo']
+
+/** Scope values for the vendor-group selector that match by origin instead of group name. */
+export const GROUP_ALL_IMPORT = '@import'
+export const GROUP_ALL_LOCAL = '@local'
 
 export type FlagKey = 'late' | 'slow' | 'shortFill' | 'returns'
 export const FLAGS: FlagKey[] = ['late', 'slow', 'shortFill', 'returns']
 
-export type FormatKey = 'int' | 'money' | 'moneyFull' | 'days' | 'pct' | 'date' | 'text' | 'multiple'
+export type FormatKey = 'int' | 'money' | 'moneyFull' | 'days' | 'signedDays' | 'pct' | 'date' | 'text' | 'multiple'
 
 /** Metrics available to cards and hint templates, computed per scope. */
 export type MetricKey =
@@ -48,6 +55,9 @@ export type MetricKey =
   | 'mostCommonIssue'
   | 'mostCommonIssueCount'
   | 'newestPoDate'
+  | 'avgReqSlip'
+  | 'shareBasisLabel'
+  | 'inUseReferenceDate'
 
 export interface TileConfig {
   id: string
@@ -69,11 +79,11 @@ export interface ColumnTip {
 }
 
 export type ScoreColumnKey =
-  | 'rank' | 'vendor' | 'lead' | 'fill' | 'onTime' | 'score' | 'issues'
-  | 'lastPo' | 'value' | 'cumShare' | 'poLines' | 'receipts'
+  | 'rank' | 'vendor' | 'lead' | 'fill' | 'onTime' | 'reqSlip' | 'score' | 'issues'
+  | 'lastPo' | 'value' | 'poCount' | 'share' | 'cumShare' | 'poLines' | 'receipts'
 
 export type IssueColumnKey =
-  | 'vendor' | 'flags' | 'lastPo' | 'onTime' | 'lead' | 'fill' | 'returns'
+  | 'vendor' | 'flags' | 'status' | 'lastPo' | 'onTime' | 'lead' | 'fill' | 'reqSlip' | 'returns'
   | 'openRows' | 'value' | 'receipts'
 
 export interface ColumnConfig<K extends string = string> {
@@ -112,6 +122,9 @@ export interface Allowance {
   Import: number | null
 }
 
+export type LeadBasis = 'scopeMedian' | 'mixMedian'
+export type ShareBasis = 'poCount' | 'poLines' | 'value'
+
 export interface FieldAliases {
   [field: string]: string[]
 }
@@ -141,9 +154,22 @@ export interface AppConfig {
     allowances: Record<string, Allowance>
   }
   verdicts: {
-    lead: { fastMultiple: number; fast: VerdictBand; typical: VerdictBand; slow: VerdictBand }
-    fill: { completeAt: number; complete: VerdictBand; near: VerdictBand; short: VerdictBand }
-    onTime: { onTimeAt: number; onTime: VerdictBand; mixed: VerdictBand; late: VerdictBand }
+    lead: {
+      /**
+       * Reference R the vendor's lead time is compared with.
+       * scopeMedian: median of vendor lead times in scope (PRD).
+       * mixMedian: the vendor's own material × origin medians, weighted by its receipts.
+       */
+      basis: LeadBasis
+      fastMultiple: number
+      slowMultiple: number
+      fast: VerdictBand
+      typical: VerdictBand
+      slow: VerdictBand
+    }
+    fill: { completeAt: number; nearAt: number; complete: VerdictBand; near: VerdictBand; short: VerdictBand }
+    onTime: { onTimeAt: number; mixedAt: number; onTime: VerdictBand; mixed: VerdictBand; late: VerdictBand }
+    reqSlip: { onDateAt: number; slightAt: number; onDate: VerdictBand; slight: VerdictBand; late: VerdictBand }
     noData: string
   }
   issues: {
@@ -152,7 +178,6 @@ export interface AppConfig {
     shortFillPct: number
     shortFillSeriousPct: number
     returnsPct: number
-    stillInUseDays: number
     thinSample: number
     flags: Record<FlagKey, FlagConfig>
     severity: Record<Severity, VerdictBand>
@@ -164,6 +189,21 @@ export interface AppConfig {
   }
   spend: {
     topSharePct: number
+    /** What the share and cumulative share count. */
+    basis: ShareBasis
+    /** Share of the vendor's own vendor group, or of the whole scope. */
+    partition: 'vendorGroup' | 'scope'
+  }
+  inUse: {
+    /** Date the window is measured back from. */
+    reference: 'newestPo' | 'newestActivity' | 'today' | 'fixed'
+    /** yyyy-mm-dd, used when reference = fixed. */
+    fixedDate: string
+    /** Which of the vendor's dates counts as its latest activity. */
+    activity: 'lastPo' | 'lastGrpo' | 'lastAny'
+    days: number
+    /** A vendor with PO lines still open counts as in use regardless of the window. */
+    openPoCounts: boolean
   }
   quartiles: {
     /** Tone for quartile 1 (best) … 4 (worst) of each criterion in scope. */
@@ -230,6 +270,9 @@ export interface Labels {
   scope: {
     vendorGroup: string
     allGroups: string
+    allImport: string
+    allLocal: string
+    groupsHeading: string
     chooseFirst: string
     clear: string
     level1: string
@@ -253,6 +296,16 @@ export interface Labels {
     issueTypeAny: string
   }
   modes: { plain: string; ranks: string; tip: string }
+  /** Still-in-use rule. reason placeholders: {activity} {date} {days} {reference} {refDate} {window} {verdict} {open} */
+  inUse: {
+    reason: string
+    openReason: string
+    activity: Record<'lastPo' | 'lastGrpo' | 'lastAny', string>
+    reference: Record<'newestPo' | 'newestActivity' | 'today' | 'fixed', string>
+  }
+  share: { basis: Record<'poCount' | 'poLines' | 'value', string>; partition: Record<'vendorGroup' | 'scope', string> }
+  criteria: Record<'lead' | 'fill' | 'onTime' | 'reqSlip', string>
+  leadBasis: Record<LeadBasis, string>
   actions: {
     copyShortlist: string
     copied: string

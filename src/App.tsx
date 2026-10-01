@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Database, Moon, Sun, SunMoon, Upload } from 'lucide-react'
 import { loadConfig, saveConfig } from './config/store'
-import type { AppConfig } from './config/types'
+import { GROUP_ALL_IMPORT, GROUP_ALL_LOCAL, type AppConfig } from './config/types'
 import { buildDemoDataset } from './data/demo'
 import { loadDataset, saveDataset } from './data/persist'
 import type { Dataset } from './data/schema'
@@ -128,11 +128,25 @@ export default function App() {
         ) : (
           <>
             <option value="">{allLabel}</option>
-            {options.map((o) => (
-              <option key={o} value={o}>
-                {o}
-              </option>
-            ))}
+            {k === 'vendorGroup' ? (
+              <>
+                <option value={GROUP_ALL_IMPORT}>{L.scope.allImport}</option>
+                <option value={GROUP_ALL_LOCAL}>{L.scope.allLocal}</option>
+                <optgroup label={L.scope.groupsHeading}>
+                  {options.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </optgroup>
+              </>
+            ) : (
+              options.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))
+            )}
           </>
         )}
       </select>

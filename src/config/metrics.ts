@@ -24,8 +24,11 @@ export const METRICS: Record<MetricKey, { format: FormatKey; description: string
   mostCommonIssue: { format: 'text', description: 'Flag carried by the most vendors' },
   mostCommonIssueCount: { format: 'int', description: 'Vendors carrying the most common flag' },
   newestPoDate: { format: 'date', description: 'Newest PO date in the data' },
+  avgReqSlip: { format: 'signedDays', description: 'Mean days after the PR required date (negative = early)' },
+  shareBasisLabel: { format: 'text', description: 'What the share counts (POs, PO lines or spend)' },
+  inUseReferenceDate: { format: 'date', description: 'Reference date of the still-in-use rule' },
 }
 
 export const METRIC_KEYS = Object.keys(METRICS) as MetricKey[]
 
-export const FORMAT_KEYS: FormatKey[] = ['int', 'money', 'moneyFull', 'days', 'pct', 'date', 'text', 'multiple']
+export const FORMAT_KEYS: FormatKey[] = ['int', 'money', 'moneyFull', 'days', 'signedDays', 'pct', 'date', 'text', 'multiple']

@@ -38,6 +38,7 @@ export function makeFormatter(cfg: AppConfig) {
       case 'money': return money(value)
       case 'moneyFull': return `${f.currencyPrefix}${num(value, 0)}`
       case 'days': return `${num(value, f.daysDecimals)}${f.daysSuffix}`
+      case 'signedDays': return `${value > 0 ? '+' : ''}${num(value, f.daysDecimals)}${f.daysSuffix}`
       case 'pct': return `${num(value * 100, f.pctDecimals)}%`
       case 'multiple': return `${num(value, 2)}×`
       case 'date': return date(value)

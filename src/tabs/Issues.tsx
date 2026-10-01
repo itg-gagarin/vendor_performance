@@ -6,7 +6,7 @@ import { interpolate, type ScopeResult, type VendorRow } from '../engine/compute
 import { DataTable, type Col } from '../ui/DataTable'
 import { useUi } from '../ui/context'
 import { FlagPills, Tiles, VendorCell } from '../ui/parts'
-import { ColumnTipContent, Field, Segmented, Toggle, useNarrow } from '../ui/primitives'
+import { ColumnTipContent, Field, Pill, Segmented, Tip, Toggle, useNarrow } from '../ui/primitives'
 
 interface Props {
   res: ScopeResult
@@ -54,7 +54,18 @@ export function Issues({ res, onOpen, onCopy, scopeKey }: Props) {
         </span>
       ),
     },
+    status: {
+      sort: (r) => r.daysSinceActivity,
+      render: (r) => (
+        <Tip content={r.inUseReason}>
+          <span className="stack" style={{ gap: 0 }}>
+            <Pill tone={r.stillInUse ? 'emerald' : 'neutral'}>{r.stillInUse ? L.legend.stillInUse : L.legend.notInUse}</Pill>
+          </span>
+        </Tip>
+      ),
+    },
     onTime: { num: true, sort: (r) => r.onTime.value, render: (r) => pct(r.onTime.value) },
+    reqSlip: { num: true, sort: (r) => r.reqSlip.value, render: (r) => <span className="mono">{f.fmt(r.reqSlip.value, 'signedDays')}</span> },
     lead: { num: true, sort: (r) => r.lead.value, render: (r) => <span className="mono">{f.fmt(r.lead.value, 'days')}</span> },
     fill: { num: true, sort: (r) => r.fill.value, render: (r) => pct(r.fill.value) },
     returns: { num: true, sort: (r) => (r.returnsRate !== null && Number.isFinite(r.returnsRate) ? r.returnsRate : r.returnsRate === null ? null : 1e9), render: (r) => (r.returnsRate !== null && !Number.isFinite(r.returnsRate) ? <span className="mono">&gt; 100%</span> : pct(r.returnsRate)) },
@@ -68,14 +79,14 @@ export function Issues({ res, onOpen, onCopy, scopeKey }: Props) {
 
   const copy = () => {
     const out = sortedRef.current
-    const header = ['Vendor code', 'Vendor name', 'Group', 'Severity', 'Issues', 'Last PO', 'Days since last PO', 'Still in use', 'On time', 'Lead time (d)', 'Fill', 'Returns', 'Open rows', 'Value', 'Receipts']
+    const header = ['Vendor code', 'Vendor name', 'Group', 'Severity', 'Issues', 'Last PO', 'Days since last PO', 'Still in use', 'Still-in-use rule', 'On time', 'Lead time (d)', 'Fill', 'vs Required (d)', 'Returns', 'Open rows', 'Value', 'Receipts']
     const p = (v: number | null) => (v === null ? '' : Number.isFinite(v) ? (v * 100).toFixed(1) + '%' : '>100%')
     const lines = out.map((r) =>
       [
         r.code, r.name, r.group, r.severity ? cfg.issues.severity[r.severity].label : '',
         r.flags.map((x) => `${cfg.issues.flags[x.key].label}: ${x.reason}`).join('; '),
-        f.fmt(r.lastPo, 'date'), r.daysSinceLastPo ?? '', r.stillInUse ? L.legend.stillInUse : L.legend.notInUse,
-        p(r.onTime.value), r.lead.value?.toFixed(1) ?? '', p(r.fill.value), p(r.returnsRate), r.openRows, Math.round(r.value), r.receipts,
+        f.fmt(r.lastPo, 'date'), r.daysSinceLastPo ?? '', r.stillInUse ? L.legend.stillInUse : L.legend.notInUse, r.inUseReason,
+        p(r.onTime.value), r.lead.value?.toFixed(1) ?? '', p(r.fill.value), r.reqSlip.value?.toFixed(1) ?? '', p(r.returnsRate), r.openRows, Math.round(r.value), r.receipts,
       ].join('\t'),
     )
     onCopy([header.join('\t'), ...lines].join('\n'), out.length)

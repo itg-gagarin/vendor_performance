@@ -1,6 +1,6 @@
 import type { AppConfig, Criterion, ExclusionReason, FlagKey, Measure, Origin, Severity, Tone } from '../config/types'
-import { CRITERIA, FLAGS, ORIGINS } from '../config/types'
-import type { Day } from '../data/schema'
+import { CRITERIA, FLAGS, GROUP_ALL_IMPORT, GROUP_ALL_LOCAL, ORIGINS } from '../config/types'
+import { DAY_MS, dayFromYMD, type Day } from '../data/schema'
 import { makeFormatter } from './format'
 import type { Prepared } from './prepare'
 import { mean, median, rank } from './stats'
@@ -9,6 +9,7 @@ import { mean, median, rank } from './stats'
 // Scope
 
 export interface Scope {
+  /** A vendor group name, '' for all, or GROUP_ALL_IMPORT / GROUP_ALL_LOCAL. */
   vendorGroup: string
   level1: string
   level2: string
@@ -18,8 +19,12 @@ export interface Scope {
 
 export const EMPTY_SCOPE: Scope = { vendorGroup: '', level1: '', level2: '', level3: '', level4: '' }
 
-function matchesScope(scope: Scope, group: string, path: readonly string[]): boolean {
-  if (scope.vendorGroup && group !== scope.vendorGroup) return false
+function matchesScope(scope: Scope, group: string, origin: Origin, path: readonly string[]): boolean {
+  if (scope.vendorGroup === GROUP_ALL_IMPORT) {
+    if (origin !== 'Import') return false
+  } else if (scope.vendorGroup === GROUP_ALL_LOCAL) {
+    if (origin !== 'Local') return false
+  } else if (scope.vendorGroup && group !== scope.vendorGroup) return false
   if (scope.level1 && path[0] !== scope.level1) return false
   if (scope.level2 && path[1] !== scope.level2) return false
   if (scope.level3 && path[2] !== scope.level3) return false
@@ -35,6 +40,8 @@ export interface ClockedReceipt {
   days: number | null
   exclusion: ExclusionReason | null
   onTime: boolean | null
+  /** GRPO date − PR required date; null without a PO link or required date. */
+  reqSlip: number | null
 }
 
 export interface AllowanceRow {
@@ -51,6 +58,8 @@ export interface ClockResult {
   receipts: ClockedReceipt[]
   allowances: AllowanceRow[]
   allowanceOf: (level1: string, origin: Origin) => number
+  /** Extract median of clock days for a material and origin (null without history). */
+  medianOf: (level1: string, origin: Origin) => number | null
 }
 
 function rawClockDays(p: Prepared, i: number, cfg: AppConfig): { days: number | null; exclusion: ExclusionReason | null } {
@@ -84,28 +93,30 @@ export function clockReceipts(p: Prepared, cfg: AppConfig): ClockResult {
 
   const medianByKey = new Map<string, number | null>()
   for (const [k, days] of byKey) medianByKey.set(k, median(days))
+  const medianOf = (level1: string, origin: Origin) => medianByKey.get(`${level1}|${origin}`) ?? null
 
   const allowanceOf = (level1: string, origin: Origin): number => {
     const set = cfg.onTime.allowances[level1]?.[origin]
     if (set !== null && set !== undefined && Number.isFinite(set)) return set
-    return medianByKey.get(`${level1}|${origin}`) ?? cfg.onTime.fallbackAllowance[origin]
+    return medianOf(level1, origin) ?? cfg.onTime.fallbackAllowance[origin]
   }
 
   const tally = new Map<string, { n: number; ok: number }>()
   const receipts: ClockedReceipt[] = raw.map((c, i) => {
-    if (c.days === null) return { days: null, exclusion: c.exclusion, onTime: null }
     const r = p.receipts[i]
-    const line = p.po[r.poIndex]
+    const line = r.poIndex >= 0 ? p.po[r.poIndex] : null
+    const reqSlip = line && line.prRequiredDate !== null ? r.grpoDate - line.prRequiredDate : null
+    if (c.days === null) return { days: null, exclusion: c.exclusion, onTime: null, reqSlip }
     const inside = c.days <= allowanceOf(r.path[0], r.origin)
-    const byRequired = cfg.onTime.requiredDateCounts && line.prRequiredDate !== null && r.grpoDate <= line.prRequiredDate
+    const byRequired = cfg.onTime.requiredDateCounts && line!.prRequiredDate !== null && r.grpoDate <= line!.prRequiredDate
     const onTime = inside || byRequired
-    if (excluded.has(r.vendorGroup)) return { days: c.days, exclusion: null, onTime }
+    if (excluded.has(r.vendorGroup)) return { days: c.days, exclusion: null, onTime, reqSlip }
     const k = `${r.path[0]}|${r.origin}`
     const t = tally.get(k) ?? { n: 0, ok: 0 }
     t.n++
     if (onTime) t.ok++
     tally.set(k, t)
-    return { days: c.days, exclusion: null, onTime }
+    return { days: c.days, exclusion: null, onTime, reqSlip }
   })
 
   const allowances: AllowanceRow[] = []
@@ -119,7 +130,7 @@ export function clockReceipts(p: Prepared, cfg: AppConfig): ClockResult {
         level1: l1,
         origin: o,
         receipts: days.length,
-        median: medianByKey.get(k) ?? null,
+        median: medianOf(l1, o),
         allowance: allowanceOf(l1, o),
         isDefault: set === null || set === undefined,
         onTimeRate: t && t.n ? t.ok / t.n : null,
@@ -127,7 +138,27 @@ export function clockReceipts(p: Prepared, cfg: AppConfig): ClockResult {
     }
   }
 
-  return { receipts, allowances, allowanceOf }
+  return { receipts, allowances, allowanceOf, medianOf }
+}
+
+// ---------------------------------------------------------------------------
+// Still-in-use reference date
+
+/** The date the still-in-use window is measured back from, per the configured rule. */
+export function inUseReferenceDate(p: Prepared, cfg: AppConfig): Day | null {
+  const u = cfg.inUse
+  if (u.reference === 'today') return Math.floor(Date.now() / DAY_MS)
+  if (u.reference === 'fixed') {
+    const m = u.fixedDate.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (m) return dayFromYMD(+m[1], +m[2], +m[3])
+    return p.newestPoDate
+  }
+  if (u.reference === 'newestActivity') {
+    let newest = p.newestPoDate
+    for (const r of p.receipts) if (newest === null || r.grpoDate > newest) newest = r.grpoDate
+    return newest
+  }
+  return p.newestPoDate
 }
 
 // ---------------------------------------------------------------------------
@@ -153,14 +184,18 @@ export interface VendorRow {
   group: string
   origin: Origin
   poLines: number
+  poCount: number
   value: number
   receipts: number
   linkedReceipts: number
   onTimeReceipts: number
   leadDays: number[]
+  /** Reference R the lead time is judged against (scope median or own-material median). */
+  leadReference: number | null
   lead: CriterionCell
   fill: CriterionCell
   onTime: CriterionCell
+  reqSlip: CriterionCell
   receivedQty: number
   returnedQty: number
   returnsRate: number | null
@@ -168,6 +203,8 @@ export interface VendorRow {
   score: number | null
   rank: number | null
   ranked: boolean
+  /** Own share of its partition (vendor group or scope) on the configured basis. */
+  share: number
   cumShare: number
   inTopSpend: boolean
   meetsReview: boolean
@@ -176,8 +213,13 @@ export interface VendorRow {
   firstPo: Day | null
   lastGrpo: Day | null
   firstGrpo: Day | null
+  /** Reference date − last PO. */
   daysSinceLastPo: number | null
+  /** Reference date − latest activity (per the still-in-use rule). */
+  daysSinceActivity: number | null
   stillInUse: boolean
+  /** The still-in-use rule applied to this vendor, in words. */
+  inUseReason: string
   flags: Flag[]
   severity: Severity | null
   poIdx: number[]
@@ -208,6 +250,9 @@ export interface ScopeMetrics {
   mostCommonIssueCount: number
   newestPoDate: Day | null
   topSharePct: number
+  avgReqSlip: number | null
+  shareBasisLabel: string
+  inUseReferenceDate: Day | null
 }
 
 export interface ScopeResult {
@@ -222,7 +267,6 @@ export interface ComputeOptions {
   minPoLines: number
 }
 
-
 export function interpolate(template: string, vars: Record<string, string | number>): string {
   return template.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m))
 }
@@ -232,16 +276,20 @@ function quartileOf(r: number | null, n: number): 1 | 2 | 3 | 4 | null {
   return (Math.min(4, Math.floor(((r - 1) / n) * 4) + 1)) as 1 | 2 | 3 | 4
 }
 
+/** Rank direction per criterion: lower lead time and slip are better, higher fill and on-time are better. */
+export const ORIENT: Record<Criterion, 'low' | 'high'> = { lead: 'low', fill: 'high', onTime: 'high', reqSlip: 'low' }
+
 export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: ComputeOptions, clock?: ClockResult): ScopeResult {
   const ck = clock ?? clockReceipts(p, cfg)
   const iss = cfg.issues
+  const L = cfg.labels
   // Reasons are shown to people, so numbers follow the configured locale.
   const { fmt, num } = makeFormatter(cfg)
   const fmtPct = (x: number) => fmt(x, 'pct')
   const fmtDays = (x: number) => fmt(x, 'days')
   // Excluded (non-material) vendor groups never enter any scope.
   const excludedGroups = new Set(cfg.data.excludedVendorGroups)
-  const inScope = (sc: Scope, group: string, path: readonly string[]) => !excludedGroups.has(group) && matchesScope(sc, group, path)
+  const inScope = (group: string, origin: Origin, path: readonly string[]) => !excludedGroups.has(group) && matchesScope(scope, group, origin, path)
   const byVendor = new Map<string, { po: number[]; rc: number[]; ret: number[] }>()
   const bucket = (code: string) => {
     let b = byVendor.get(code)
@@ -250,20 +298,22 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
   }
 
   p.po.forEach((l, i) => {
-    if (inScope(scope, l.vendorGroup, [l.level1, l.level2, l.level3, l.level4])) bucket(l.vendorCode).po.push(i)
+    if (inScope(l.vendorGroup, l.origin, [l.level1, l.level2, l.level3, l.level4])) bucket(l.vendorCode).po.push(i)
   })
   p.receipts.forEach((r, i) => {
-    if (inScope(scope, r.vendorGroup, r.path)) bucket(r.vendorCode).rc.push(i)
+    if (inScope(r.vendorGroup, r.origin, r.path)) bucket(r.vendorCode).rc.push(i)
   })
   p.returns.forEach((r, i) => {
-    if (inScope(scope, r.vendorGroup, r.path)) bucket(r.vendorCode).ret.push(i)
+    if (inScope(r.vendorGroup, r.origin, r.path)) bucket(r.vendorCode).ret.push(i)
   })
 
   const exclusions: Record<ExclusionReason, number> = { noPoLink: 0, poNotFound: 0, negativeDays: 0, noPrDate: 0 }
   const rows: VendorRow[] = []
-  const newest = p.newestPoDate
+  const refDate = inUseReferenceDate(p, cfg)
+  const u = cfg.inUse
   let scopeReceipts = 0
   let scopeLinked = 0
+  const leadBasis = cfg.verdicts.lead.basis
 
   for (const [code, b] of byVendor) {
     // A vendor is in scope when it has PO lines in scope. Receipts or returns
@@ -275,10 +325,12 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
     let openRows = 0
     let filledOrdered = 0
     let filledReceived = 0
+    const poDocs = new Set<string>()
     const originCount = { Local: 0, Import: 0 }
     for (const i of b.po) {
       const l = p.po[i]
       value += l.lineValue
+      poDocs.add(l.poDoc)
       if (lastPo === null || l.poDate > lastPo) lastPo = l.poDate
       if (firstPo === null || l.poDate < firstPo) firstPo = l.poDate
       originCount[l.origin]++
@@ -292,6 +344,9 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
     }
 
     const leadDays: number[] = []
+    const slips: number[] = []
+    let mixRefSum = 0
+    let mixRefN = 0
     let onTimeReceipts = 0
     let receivedQty = 0
     let lastGrpo: Day | null = null
@@ -302,12 +357,18 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
       receivedQty += r.qty
       if (lastGrpo === null || r.grpoDate > lastGrpo) lastGrpo = r.grpoDate
       if (firstGrpo === null || r.grpoDate < firstGrpo) firstGrpo = r.grpoDate
+      if (c.reqSlip !== null) slips.push(c.reqSlip)
       if (c.days === null) {
         exclusions[c.exclusion!]++
         continue
       }
       leadDays.push(c.days)
       if (c.onTime) onTimeReceipts++
+      const m = ck.medianOf(r.path[0], r.origin)
+      if (m !== null) {
+        mixRefSum += m
+        mixRefN++
+      }
     }
     let returnedQty = 0
     for (const i of b.ret) returnedQty += p.returns[i].qty
@@ -320,7 +381,26 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
     const netReceived = receivedQty - returnedQty
     const returnsRate = returnedQty === 0 ? (receivedQty > 0 ? 0 : null) : netReceived > 0 ? returnedQty / netReceived : Infinity
     const origin: Origin = originCount.Import > originCount.Local ? 'Import' : 'Local'
-    const daysSince = newest !== null && lastPo !== null ? newest - lastPo : null
+
+    // Still in use: reference date − latest activity ≤ window (or open PO lines, when enabled).
+    const activity = u.activity === 'lastPo' ? lastPo : u.activity === 'lastGrpo' ? lastGrpo : lastPo === null ? lastGrpo : lastGrpo === null ? lastPo : Math.max(lastPo, lastGrpo)
+    const daysSinceActivity = refDate !== null && activity !== null ? refDate - activity : null
+    const byWindow = daysSinceActivity !== null && daysSinceActivity <= u.days
+    const byOpen = u.openPoCounts && openRows > 0
+    const stillInUse = byWindow || byOpen
+    const verdictWord = stillInUse ? L.legend.stillInUse : L.legend.notInUse
+    const inUseReason =
+      byOpen && !byWindow
+        ? interpolate(L.inUse.openReason, { open: openRows, verdict: verdictWord })
+        : interpolate(L.inUse.reason, {
+            activity: L.inUse.activity[u.activity],
+            date: activity === null ? '—' : fmt(activity, 'date'),
+            days: daysSinceActivity ?? '—',
+            reference: L.inUse.reference[u.reference],
+            refDate: refDate === null ? '—' : fmt(refDate, 'date'),
+            window: u.days,
+            verdict: verdictWord,
+          })
 
     const blank = (): CriterionCell => ({ value: null, rank: null, quartile: null, verdict: cfg.verdicts.noData, tone: 'neutral' })
     rows.push({
@@ -329,14 +409,17 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
       group: info.group,
       origin,
       poLines: b.po.length,
+      poCount: poDocs.size,
       value,
       receipts: b.rc.length,
       linkedReceipts: leadDays.length,
       onTimeReceipts,
       leadDays,
+      leadReference: leadBasis === 'mixMedian' && mixRefN ? mixRefSum / mixRefN : null,
       lead: { ...blank(), value: leadValue },
       fill: { ...blank(), value: filledOrdered > 0 ? filledReceived / filledOrdered : null },
       onTime: { ...blank(), value: leadDays.length ? onTimeReceipts / leadDays.length : null },
+      reqSlip: { ...blank(), value: mean(slips) },
       receivedQty,
       returnedQty,
       returnsRate,
@@ -344,6 +427,7 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
       score: null,
       rank: null,
       ranked: false,
+      share: 0,
       cumShare: 0,
       inTopSpend: false,
       meetsReview: false,
@@ -352,8 +436,10 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
       firstPo,
       lastGrpo,
       firstGrpo,
-      daysSinceLastPo: daysSince,
-      stillInUse: daysSince !== null && daysSince <= iss.stillInUseDays,
+      daysSinceLastPo: refDate !== null && lastPo !== null ? refDate - lastPo : null,
+      daysSinceActivity,
+      stillInUse,
+      inUseReason,
       flags: [],
       severity: null,
       poIdx: b.po,
@@ -361,16 +447,26 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
     })
   }
 
-  // Spend share: vendors sorted by value, largest first.
-  const totalValue = rows.reduce((s, r) => s + r.value, 0)
-  const bySpend = [...rows].sort((a, b) => b.value - a.value)
-  let running = 0
-  const topCut = cfg.spend.topSharePct / 100
-  for (const r of bySpend) {
-    r.inTopSpend = totalValue > 0 && running / totalValue < topCut
-    running += r.value
-    r.cumShare = totalValue > 0 ? running / totalValue : 0
+  // Share and cumulative share: per vendor group (or the whole scope), largest first.
+  const basisOf = (r: VendorRow) => (cfg.spend.basis === 'poCount' ? r.poCount : cfg.spend.basis === 'poLines' ? r.poLines : r.value)
+  const partitions = new Map<string, VendorRow[]>()
+  for (const r of rows) {
+    const k = cfg.spend.partition === 'vendorGroup' ? r.group : ''
+    if (!partitions.has(k)) partitions.set(k, [])
+    partitions.get(k)!.push(r)
   }
+  const topCut = cfg.spend.topSharePct / 100
+  for (const members of partitions.values()) {
+    const total = members.reduce((s, r) => s + basisOf(r), 0)
+    let running = 0
+    for (const r of [...members].sort((a, b) => basisOf(b) - basisOf(a) || b.value - a.value)) {
+      r.inTopSpend = total > 0 && running / total < topCut
+      running += basisOf(r)
+      r.share = total > 0 ? basisOf(r) / total : 0
+      r.cumShare = total > 0 ? running / total : 0
+    }
+  }
+  const totalValue = rows.reduce((s, r) => s + r.value, 0)
 
   // Review threshold
   for (const r of rows) {
@@ -379,15 +475,15 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
     r.meetsReview = cfg.review.combine === 'all' ? byLines && byValue : byLines || byValue
   }
 
-  // Scope median M of vendor lead times.
+  // Scope median M of vendor lead times; reference R per vendor for verdicts and the Slow flag.
   const M = median(rows.map((r) => r.lead.value).filter((v): v is number => v !== null))
+  if (leadBasis === 'scopeMedian') for (const r of rows) r.leadReference = M
 
   // Rank population and criterion ranks.
   const pop = cfg.scoring.rankPopulation === 'scope' ? rows : rows.filter((r) => r.poLines >= opts.minPoLines)
   const n = pop.length
-  const orient: Record<Criterion, 'low' | 'high'> = { lead: 'low', fill: 'high', onTime: 'high' }
   for (const c of CRITERIA) {
-    const ranks = rank(pop.map((r) => r[c].value), orient[c], cfg.scoring.tieMethod)
+    const ranks = rank(pop.map((r) => r[c].value), ORIENT[c], cfg.scoring.tieMethod)
     const known = ranks.filter((x): x is number => x !== null)
     const fillRank = cfg.scoring.missingRank === 'worst' ? n : (median(known) ?? n)
     pop.forEach((r, i) => {
@@ -399,7 +495,7 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
   const w = cfg.scoring.weights
   for (const r of pop) {
     r.ranked = true
-    r.score = CRITERIA.reduce((s, c) => s + w[c] * (r[c].rank ?? n), 0)
+    r.score = CRITERIA.reduce((s, c) => s + (w[c] ?? 0) * (r[c].rank ?? n), 0)
   }
   const overall = [...pop].sort((a, b) => a.score! - b.score! || b.value - a.value)
   overall.forEach((r, i) => (r.rank = i + 1))
@@ -407,26 +503,34 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
   // Verdicts and tones.
   const v = cfg.verdicts
   const q = cfg.quartiles.tones
+  const tone = (c: CriterionCell, bandTone: Tone) => (c.quartile ? q[c.quartile - 1] : bandTone)
   for (const r of rows) {
-    const L = r.lead.value
-    if (L !== null && M !== null) {
-      const band = L <= v.lead.fastMultiple * M ? v.lead.fast : L <= iss.slowMultiple * M ? v.lead.typical : v.lead.slow
+    const Lv = r.lead.value
+    const R = r.leadReference
+    if (Lv !== null && R !== null) {
+      const band = Lv <= v.lead.fastMultiple * R ? v.lead.fast : Lv <= v.lead.slowMultiple * R ? v.lead.typical : v.lead.slow
       r.lead.verdict = band.label
-      r.lead.tone = r.lead.quartile ? q[r.lead.quartile - 1] : band.tone
+      r.lead.tone = tone(r.lead, band.tone)
     }
     const F = r.fill.value
     if (F !== null) {
       const pct = F * 100
-      const band = pct >= v.fill.completeAt ? v.fill.complete : pct >= iss.shortFillPct ? v.fill.near : v.fill.short
+      const band = pct >= v.fill.completeAt ? v.fill.complete : pct >= v.fill.nearAt ? v.fill.near : v.fill.short
       r.fill.verdict = band.label
-      r.fill.tone = r.fill.quartile ? q[r.fill.quartile - 1] : band.tone
+      r.fill.tone = tone(r.fill, band.tone)
     }
     const O = r.onTime.value
     if (O !== null) {
       const pct = O * 100
-      const band = pct >= v.onTime.onTimeAt ? v.onTime.onTime : pct >= iss.latePct ? v.onTime.mixed : v.onTime.late
+      const band = pct >= v.onTime.onTimeAt ? v.onTime.onTime : pct >= v.onTime.mixedAt ? v.onTime.mixed : v.onTime.late
       r.onTime.verdict = band.label
-      r.onTime.tone = r.onTime.quartile ? q[r.onTime.quartile - 1] : band.tone
+      r.onTime.tone = tone(r.onTime, band.tone)
+    }
+    const S = r.reqSlip.value
+    if (S !== null) {
+      const band = S <= v.reqSlip.onDateAt ? v.reqSlip.onDate : S <= v.reqSlip.slightAt ? v.reqSlip.slight : v.reqSlip.late
+      r.reqSlip.verdict = band.label
+      r.reqSlip.tone = tone(r.reqSlip, band.tone)
     }
   }
 
@@ -437,12 +541,13 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
     if (fl.late.enabled && enough && r.onTime.value !== null && r.onTime.value * 100 < iss.latePct) {
       r.flags.push({ key: 'late', severity: 'serious', reason: interpolate(fl.late.reason, { value: fmtPct(r.onTime.value), threshold: `${iss.latePct}%` }) })
     }
-    if (fl.slow.enabled && enough && r.lead.value !== null && M !== null && r.lead.value > iss.slowMultiple * M) {
+    const R = r.leadReference
+    if (fl.slow.enabled && enough && r.lead.value !== null && R !== null && r.lead.value > iss.slowMultiple * R) {
       r.flags.push({
         key: 'slow', severity: 'warning',
         reason: interpolate(fl.slow.reason, {
-          value: fmtDays(r.lead.value), threshold: fmtDays(iss.slowMultiple * M),
-          multiple: num(iss.slowMultiple, 2), median: fmtDays(M),
+          value: fmtDays(r.lead.value), threshold: fmtDays(iss.slowMultiple * R),
+          multiple: num(iss.slowMultiple, 2), median: fmtDays(R), basis: L.leadBasis[leadBasis],
         }),
       })
     }
@@ -469,11 +574,20 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
   let ordered = 0
   let received = 0
   let poLines = 0
+  let slipSum = 0
+  let slipN = 0
   for (const r of rows) {
     linked += r.linkedReceipts
     onTimeAll += r.onTimeReceipts
     for (const d of r.leadDays) leadSum += d
     poLines += r.poLines
+    for (const i of r.receiptIdx) {
+      const s = ck.receipts[i].reqSlip
+      if (s !== null) {
+        slipSum += s
+        slipN++
+      }
+    }
     for (const i of r.poIdx) {
       if (p.receiptCountByPo[i] > 0) {
         ordered += p.po[i].qtyOrdered
@@ -512,8 +626,11 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
     problemSpendShare: totalValue ? problemSpend / totalValue : null,
     mostCommonIssue: common ? cfg.issues.flags[common].label : '—',
     mostCommonIssueCount: common ? flagCounts.get(common)! : 0,
-    newestPoDate: newest,
+    newestPoDate: p.newestPoDate,
     topSharePct: cfg.spend.topSharePct / 100,
+    avgReqSlip: slipN ? slipSum / slipN : null,
+    shareBasisLabel: L.share.basis[cfg.spend.basis],
+    inUseReferenceDate: refDate,
   }
 
   return { rows, metrics, exclusions, clock: ck, population: n }
@@ -524,14 +641,19 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
 
 export function measureValues(p: Prepared, measure: Measure, poIdx: number[], receiptIdx: number[], origin?: Origin): number[] {
   const out: number[] = []
-  if (measure === 'poToGrpo') {
+  if (measure === 'poToGrpo' || measure === 'requiredToGrpo') {
     for (const i of receiptIdx) {
       const r = p.receipts[i]
       if (r.poIndex < 0) continue
       const l = p.po[r.poIndex]
       if (origin && l.origin !== origin) continue
-      const d = r.grpoDate - l.poDate
-      if (d >= 0) out.push(d)
+      if (measure === 'poToGrpo') {
+        const d = r.grpoDate - l.poDate
+        if (d >= 0) out.push(d)
+      } else if (l.prRequiredDate !== null) {
+        // Signed: negative = arrived before the PR required date.
+        out.push(r.grpoDate - l.prRequiredDate)
+      }
     }
     return out
   }

@@ -65,7 +65,7 @@ export function VendorCell({ r, showMarks = true }: { r: VendorRow; showMarks?: 
   )
 }
 
-export function CritCell({ c, kind, mode }: { c: CriterionCell; kind: 'days' | 'pct'; mode: 'plain' | 'ranks' }) {
+export function CritCell({ c, kind, mode }: { c: CriterionCell; kind: 'days' | 'pct' | 'signedDays'; mode: 'plain' | 'ranks' }) {
   const { f, cfg } = useUi()
   const q = c.quartile ? cfg.quartiles.labels[c.quartile - 1] : null
   if (mode === 'ranks') {
@@ -143,25 +143,30 @@ export function Legend() {
   const v = cfg.verdicts
   const i = cfg.issues
   const bands = [
-    { name: cfg.columns.scorecard.find((c) => c.id === 'lead')?.label ?? 'Lead time', items: [
-      [v.lead.fast.label, `≤ ${v.lead.fastMultiple} × scope median`],
-      [v.lead.typical.label, `≤ ${i.slowMultiple} × scope median`],
-      [v.lead.slow.label, `> ${i.slowMultiple} × scope median`],
+    { name: cfg.labels.criteria.lead, items: [
+      [v.lead.fast.label, `≤ ${v.lead.fastMultiple} × ${cfg.labels.leadBasis[v.lead.basis]}`],
+      [v.lead.typical.label, `≤ ${v.lead.slowMultiple} × ${cfg.labels.leadBasis[v.lead.basis]}`],
+      [v.lead.slow.label, `> ${v.lead.slowMultiple} × ${cfg.labels.leadBasis[v.lead.basis]}`],
     ] },
-    { name: cfg.columns.scorecard.find((c) => c.id === 'fill')?.label ?? 'Fill', items: [
+    { name: cfg.labels.criteria.fill, items: [
       [v.fill.complete.label, `≥ ${v.fill.completeAt}%`],
-      [v.fill.near.label, `≥ ${i.shortFillPct}%`],
-      [v.fill.short.label, `< ${i.shortFillPct}%`],
+      [v.fill.near.label, `≥ ${v.fill.nearAt}%`],
+      [v.fill.short.label, `< ${v.fill.nearAt}%`],
     ] },
-    { name: cfg.columns.scorecard.find((c) => c.id === 'onTime')?.label ?? 'On time', items: [
+    { name: cfg.labels.criteria.onTime, items: [
       [v.onTime.onTime.label, `≥ ${v.onTime.onTimeAt}%`],
-      [v.onTime.mixed.label, `≥ ${i.latePct}%`],
-      [v.onTime.late.label, `< ${i.latePct}%`],
+      [v.onTime.mixed.label, `≥ ${v.onTime.mixedAt}%`],
+      [v.onTime.late.label, `< ${v.onTime.mixedAt}%`],
+    ] },
+    { name: cfg.labels.criteria.reqSlip, items: [
+      [v.reqSlip.onDate.label, `≤ ${v.reqSlip.onDateAt} d after required date`],
+      [v.reqSlip.slight.label, `≤ ${v.reqSlip.slightAt} d`],
+      [v.reqSlip.late.label, `> ${v.reqSlip.slightAt} d`],
     ] },
   ]
   const flagRule: Record<string, string> = {
     late: `On time < ${i.latePct}%`,
-    slow: `Lead time > ${i.slowMultiple} × scope median`,
+    slow: `Lead time > ${i.slowMultiple} × ${cfg.labels.leadBasis[v.lead.basis]}`,
     shortFill: `Fill < ${i.shortFillPct}% (serious < ${i.shortFillSeriousPct}%)`,
     returns: `Returns > ${i.returnsPct}% of net received`,
   }
@@ -211,6 +216,10 @@ export function Legend() {
           <span className="legend-item"><span className="dot" /> {L.thresholdDot}</span>
           <span className="legend-item"><span className="thin-mark">{L.thinMarkLabel}</span> {L.thinMark}</span>
           <span className="legend-item"><span className="tag">Group</span> {L.groupChip}</span>
+          <span className="small muted">
+            {L.stillInUse}: {cfg.labels.inUse.reference[cfg.inUse.reference]} − {cfg.labels.inUse.activity[cfg.inUse.activity].toLowerCase()} ≤ {cfg.inUse.days} d
+            {cfg.inUse.openPoCounts ? ', or open PO lines' : ''}
+          </span>
         </div>
       </div>
     </details>

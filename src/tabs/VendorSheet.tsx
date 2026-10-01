@@ -48,10 +48,11 @@ export function VendorSheet({ row: r, res, prepared, onClose }: Props) {
     return [...byItem.entries()].sort((a, b) => b[1].value - a[1].value).slice(0, 5)
   }, [r, prepared])
 
-  const critRows: { key: Criterion; label: string; kind: 'days' | 'pct' }[] = [
-    { key: 'lead', label: cfg.columns.scorecard.find((c) => c.id === 'lead')!.label, kind: 'days' },
-    { key: 'fill', label: cfg.columns.scorecard.find((c) => c.id === 'fill')!.label, kind: 'pct' },
-    { key: 'onTime', label: cfg.columns.scorecard.find((c) => c.id === 'onTime')!.label, kind: 'pct' },
+  const critRows: { key: Criterion; label: string; kind: 'days' | 'pct' | 'signedDays' }[] = [
+    { key: 'lead', label: cfg.labels.criteria.lead, kind: 'days' },
+    { key: 'fill', label: cfg.labels.criteria.fill, kind: 'pct' },
+    { key: 'onTime', label: cfg.labels.criteria.onTime, kind: 'pct' },
+    { key: 'reqSlip', label: cfg.labels.criteria.reqSlip, kind: 'signedDays' },
   ]
 
   const span = r.firstPo !== null && r.lastPo !== null ? r.lastPo - r.firstPo : null
@@ -80,6 +81,14 @@ export function VendorSheet({ row: r, res, prepared, onClose }: Props) {
             <FlagPills r={r} withReason />
           </section>
 
+          <section className="sheet-section">
+            <span className="label">{D.status}</span>
+            <span className="row-tight small">
+              <Pill tone={r.stillInUse ? 'emerald' : 'neutral'}>{r.stillInUse ? L.legend.stillInUse : L.legend.notInUse}</Pill>
+              <span className="muted">{r.inUseReason}</span>
+            </span>
+          </section>
+
           <section className="kv">
             <div>
               <span className="label">{D.scoreRank}</span>
@@ -94,6 +103,15 @@ export function VendorSheet({ row: r, res, prepared, onClose }: Props) {
             <div>
               <span className="label">{D.lastGrpo}</span>
               <span className="mono">{f.fmt(r.lastGrpo, 'date')}</span>
+            </div>
+            <div>
+              <span className="label">{cfg.columns.scorecard.find((c) => c.id === 'share')?.label ?? 'Share'}</span>
+              <span className="mono">
+                {f.fmt(r.share, 'pct')} · cum. {f.fmt(r.cumShare, 'pct')}
+              </span>
+              <span className="caption muted">
+                {r.poCount} POs · {cfg.labels.share.basis[cfg.spend.basis]} {cfg.labels.share.partition[cfg.spend.partition]}
+              </span>
             </div>
             <div>
               <span className="label">{D.openRows}</span>
