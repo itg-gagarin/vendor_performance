@@ -50,7 +50,7 @@ With the default vendor-group exclusions this reproduces all six PRD allowance e
 | Formulas | clock (PO→GRPO / PR→GRPO), required-date pass route, allowance per Level 1 × origin (empty = extract median), fallback allowance, lead statistic (mean/median), fill cap per line, weights 0–5 for Lead time, Fill, On time and vs Required date (GRPO − PR required date; weight 0 by default), tie method, missing-value rank, rank population |
 | Verdict formulas | lead-time reference R (scope median, or median of the vendor's own materials × origin), Fast / Typical multiples of R, Complete / Near-full %, On-time / Mixed %, By-required-date / Slightly-late days. Independent of the issue thresholds |
 | Issue flags | late %, slow × R, short-fill % and serious %, returns %, thin sample, words, colours, reason templates, on/off |
-| Share | basis (number of POs (default), PO lines, or spend), share of the vendor's own vendor group (default) or the whole scope, inside the selected Level 1–4; top share % |
+| Share | basis (number of POs (default), PO lines, or spend), share of the vendor's own vendor group (default) or the whole scope, inside the selected Level 1–4; % reached by the Top share filter |
 | Still in use | reference date (newest PO in data, newest PO or GRPO, today, or a fixed date), activity (last PO, last GRPO, or either), window in days, optional "open PO lines count as in use". Each vendor shows the rule applied to its own dates |
 | Cards | label, metric (from `src/config/metrics.ts`), format, hint template with `{metric}` placeholders, tooltip, accent rule, order, visibility, add/remove |
 | Columns | header, tooltip purpose / formula / SAP source, order, visibility |

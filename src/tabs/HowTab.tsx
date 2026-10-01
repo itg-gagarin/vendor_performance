@@ -122,9 +122,8 @@ export function HowTab() {
           <ul className="small">
             <li>Scope = vendor group × Level 1–4 material path. “{cfg.labels.scope.allImport}” and “{cfg.labels.scope.allLocal}” select every vendor group of that origin. Every rank, median, quartile and share is computed inside the scope.</li>
             <li>
-              Share = the vendor&apos;s {basisWord} ÷ {basisWord} of all vendors {SH.partition === 'vendorGroup' ? 'in its vendor group' : 'in scope'}, within the selected item-group levels. Cum. share
-              runs down the vendors of the same {SH.partition === 'vendorGroup' ? 'vendor group' : 'scope'}, largest first. “Top {SH.topSharePct}%” keeps vendors until the running share reaches {SH.topSharePct}%, including the
-              vendor that crosses it.
+              Share = the vendor&apos;s {basisWord} ÷ {basisWord} of all vendors {SH.partition === 'vendorGroup' ? 'in its vendor group' : 'in scope'}, within the selected item-group levels. “Top {SH.topSharePct}%” takes the vendors with the largest Share
+              first{SH.partition === 'vendorGroup' ? ' in each vendor group' : ''} and keeps adding until together they reach {SH.topSharePct}%, including the vendor that crosses it.
             </li>
             <li>Review threshold: ≥ {cfg.review.minPoLines} PO lines {cfg.review.combine === 'any' ? 'or' : 'and'} ≥ {f.fmt(cfg.review.minValue, 'money')}.</li>
             <li>Cell colour = quartile of the criterion rank inside the rank population.</li>

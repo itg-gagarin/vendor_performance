@@ -107,7 +107,7 @@ export function VendorSheet({ row: r, res, prepared, onClose }: Props) {
             <div>
               <span className="label">{cfg.columns.scorecard.find((c) => c.id === 'share')?.label ?? 'Share'}</span>
               <span className="mono">
-                {f.fmt(r.share, 'pct')} · cum. {f.fmt(r.cumShare, 'pct')}
+                {f.fmt(r.share, 'pct')}
               </span>
               <span className="caption muted">
                 {r.poCount} POs · {cfg.labels.share.basis[cfg.spend.basis]} {cfg.labels.share.partition[cfg.spend.partition]}

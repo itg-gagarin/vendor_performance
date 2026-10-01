@@ -451,8 +451,7 @@ export function ConfigTab({ draft, setDraft, dirty, onSave, onDiscard, prepared,
               </Field>
             </div>
             <div className="formula">
-              Share(v) = {draft.spend.basis === 'poCount' ? 'POs of v' : draft.spend.basis === 'poLines' ? 'PO lines of v' : 'spend of v'} ÷ {draft.spend.basis === 'poCount' ? 'POs' : draft.spend.basis === 'poLines' ? 'PO lines' : 'spend'} of all vendors in {draft.spend.partition === 'vendorGroup' ? "v's vendor group" : 'the scope'} (selected Level 1–4){'\n'}
-              Cum. share(v) = Σ Share of v and every larger vendor {draft.spend.partition === 'vendorGroup' ? 'in the same vendor group' : 'in scope'}
+              Share(v) = {draft.spend.basis === 'poCount' ? 'POs of v' : draft.spend.basis === 'poLines' ? 'PO lines of v' : 'spend of v'} ÷ {draft.spend.basis === 'poCount' ? 'POs' : draft.spend.basis === 'poLines' ? 'PO lines' : 'spend'} of all vendors in {draft.spend.partition === 'vendorGroup' ? "v's vendor group" : 'the scope'} (selected Level 1–4)
             </div>
           </Section>
 

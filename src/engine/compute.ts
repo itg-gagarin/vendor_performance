@@ -205,7 +205,6 @@ export interface VendorRow {
   ranked: boolean
   /** Own share of its partition (vendor group or scope) on the configured basis. */
   share: number
-  cumShare: number
   inTopSpend: boolean
   meetsReview: boolean
   thin: boolean
@@ -428,7 +427,6 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
       rank: null,
       ranked: false,
       share: 0,
-      cumShare: 0,
       inTopSpend: false,
       meetsReview: false,
       thin: b.rc.length < iss.thinSample,
@@ -447,7 +445,7 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
     })
   }
 
-  // Share and cumulative share: per vendor group (or the whole scope), largest first.
+  // Share per vendor group (or the whole scope). The Top share filter walks each group largest first.
   const basisOf = (r: VendorRow) => (cfg.spend.basis === 'poCount' ? r.poCount : cfg.spend.basis === 'poLines' ? r.poLines : r.value)
   const partitions = new Map<string, VendorRow[]>()
   for (const r of rows) {
@@ -463,7 +461,6 @@ export function computeScope(p: Prepared, cfg: AppConfig, scope: Scope, opts: Co
       r.inTopSpend = total > 0 && running / total < topCut
       running += basisOf(r)
       r.share = total > 0 ? basisOf(r) / total : 0
-      r.cumShare = total > 0 ? running / total : 0
     }
   }
   const totalValue = rows.reduce((s, r) => s + r.value, 0)

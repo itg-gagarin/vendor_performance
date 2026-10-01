@@ -80,7 +80,7 @@ export interface ColumnTip {
 
 export type ScoreColumnKey =
   | 'rank' | 'vendor' | 'lead' | 'fill' | 'onTime' | 'reqSlip' | 'score' | 'issues'
-  | 'lastPo' | 'value' | 'poCount' | 'share' | 'cumShare' | 'poLines' | 'receipts'
+  | 'lastPo' | 'value' | 'poCount' | 'share' | 'poLines' | 'receipts'
 
 export type IssueColumnKey =
   | 'vendor' | 'flags' | 'status' | 'lastPo' | 'onTime' | 'lead' | 'fill' | 'reqSlip' | 'returns'
@@ -189,7 +189,7 @@ export interface AppConfig {
   }
   spend: {
     topSharePct: number
-    /** What the share and cumulative share count. */
+    /** What a vendor share counts. */
     basis: ShareBasis
     /** Share of the vendor's own vendor group, or of the whole scope. */
     partition: 'vendorGroup' | 'scope'

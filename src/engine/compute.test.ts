@@ -174,7 +174,7 @@ describe('vendor formulas', () => {
     const a = res.rows.find((r) => r.code === 'A')!
     // B: 6 lines, Rp 18 jt → below both. A: Rp 5 jt → below.
     expect(b.meetsReview).toBe(false)
-    expect(b.cumShare).toBeCloseTo(18 / 23)
+    expect(b.share).toBeCloseTo(18 / 23)
     // B alone is 78% of spend, so A (the vendor that crosses 80%) is still inside the top 80%.
     expect(b.inTopSpend).toBe(true)
     expect(a.inTopSpend).toBe(true)
@@ -196,7 +196,7 @@ describe('vendor formulas', () => {
     expect(row('D').poCount).toBe(2)
     expect(row('B').share).toBeCloseTo(6 / 11)
     expect(row('A').share).toBeCloseTo(5 / 11)
-    expect(row('A').cumShare).toBeCloseTo(1)
+    expect(row('A').inTopSpend).toBe(true) // B (54.5%) then A crosses 80%
     expect(row('D').share).toBe(1)
     // Item-group scope narrows both numerator and denominator.
     const other = po('A', 'A9', 120, 10, 1, { level1: 'Packaging' })
@@ -312,10 +312,14 @@ describe('saved configuration from an earlier version', () => {
   it('replaces unedited retired default texts but keeps edited ones', async () => {
     const { normalizeConfig } = await import('../config/store')
     const old = structuredClone(DEFAULT_CONFIG)
-    old.columns.scorecard.find((c) => c.id === 'cumShare')!.tip.formula = 'Σ value of this and larger vendors ÷ scope value'
-    old.columns.scorecard.find((c) => c.id === 'value')!.tip.purpose = 'My own words'
-    const cfg = normalizeConfig(JSON.parse(JSON.stringify(old)))
-    expect(cfg.columns.scorecard.find((c) => c.id === 'cumShare')!.tip.formula).toBe('Generated from Configuration → Share')
+    const saved = JSON.parse(JSON.stringify(old))
+    saved.columns.scorecard.push({ id: 'cumShare', label: 'Cum. share', visible: true, tip: { purpose: '', formula: 'Σ value of this and larger vendors ÷ scope value', source: '' } })
+    saved.labels.config.shareTitle = 'Share and cumulative share'
+    saved.columns.scorecard.find((c: { id: string }) => c.id === 'value').tip.purpose = 'My own words'
+    const cfg = normalizeConfig(saved)
+    // A column removed from the platform disappears from saved configurations too.
+    expect(cfg.columns.scorecard.some((c) => (c.id as string) === 'cumShare')).toBe(false)
+    expect(cfg.labels.config.shareTitle).toBe('Share')
     expect(cfg.columns.scorecard.find((c) => c.id === 'value')!.tip.purpose).toBe('My own words')
   })
 })

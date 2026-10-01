@@ -11,7 +11,6 @@ export function shareFormulas(cfg: AppConfig) {
   const within = 'counting only PO lines inside the selected Level 1–4'
   return {
     share: `Vendor's ${unit} ÷ ${unit} of ${group}, ${within}.`,
-    cumShare: `Sort ${group} by ${unit}, largest first; Cum. share = running total of Share down to and including this vendor.`,
-    top: `Keeps vendors from the top of each ${partition === 'vendorGroup' ? 'vendor group' : 'scope'} until the running share reaches ${topSharePct}%, including the vendor that crosses it.`,
+    top: `Takes the vendors with the largest Share first${partition === 'vendorGroup' ? ' in each vendor group' : ''} and keeps adding until together they reach ${topSharePct}%, including the vendor that crosses it.`,
   }
 }

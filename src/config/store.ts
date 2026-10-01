@@ -34,9 +34,12 @@ function reconcileColumns<K extends string>(saved: ColumnConfig<K>[], defaults: 
 // one of these was never edited there, so it takes the current default.
 const RETIRED_DEFAULTS: Record<string, string[]> = {
   'labels.filters.top80.label': ['Top {topSharePct} of spend'],
-  'labels.filters.top80.tip': ['Only the largest vendors that together make up the configured share of scope spend.'],
-  'columns.scorecard.cumShare.purpose': ['Running share of scope spend when vendors are sorted by value, largest first.', 'Running share when vendors of the same vendor group are sorted by share, largest first.'],
-  'columns.scorecard.cumShare.formula': ['Σ value of this and larger vendors ÷ scope value', 'Σ share of this and larger vendors in the same vendor group'],
+  'labels.filters.top80.tip': [
+    'Only the largest vendors that together make up the configured share of scope spend.',
+    'Only the largest vendors that together reach the configured cumulative share (basis and grouping set on Configuration → Share).',
+  ],
+  'labels.config.shareTitle': ['Share and cumulative share'],
+  'labels.config.shareHint': ['What a vendor share counts and what it is a share of. Cum. share and the Top share filter follow this.'],
   'columns.scorecard.share.formula': ['vendor POs ÷ Σ POs of all vendors in the same vendor group'],
   'tiles.scorecard.value.hint': ['{poLines} PO lines · {top80Vendors} vendors make {topSharePct} of spend'],
 }
@@ -45,6 +48,7 @@ function retireOldDefaults(cfg: AppConfig) {
   const replace = (path: string, current: string, next: string) => (RETIRED_DEFAULTS[path]?.includes(current) ? next : current)
   cfg.labels.filters.top80.label = replace('labels.filters.top80.label', cfg.labels.filters.top80.label, DEFAULT_CONFIG.labels.filters.top80.label)
   cfg.labels.filters.top80.tip = replace('labels.filters.top80.tip', cfg.labels.filters.top80.tip, DEFAULT_CONFIG.labels.filters.top80.tip)
+  for (const k of ['shareTitle', 'shareHint']) cfg.labels.config[k] = replace(`labels.config.${k}`, cfg.labels.config[k], DEFAULT_CONFIG.labels.config[k])
   for (const c of cfg.columns.scorecard) {
     const d = DEFAULT_CONFIG.columns.scorecard.find((x) => x.id === c.id)
     if (!d) continue

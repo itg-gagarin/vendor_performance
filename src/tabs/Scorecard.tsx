@@ -58,7 +58,6 @@ export function Scorecard({ res, minPoLines, setMinPoLines, onOpen, onCopy, scop
     value: { num: true, sort: (r) => r.value, render: (r) => <span className="mono">{f.fmt(r.value, 'money')}</span> },
     poCount: { num: true, sort: (r) => r.poCount, render: (r) => <span className="mono">{f.fmt(r.poCount, 'int')}</span> },
     share: { num: true, sort: (r) => r.share, render: (r) => <span className="mono">{f.fmt(r.share, 'pct')}</span> },
-    cumShare: { num: true, sort: (r) => r.cumShare, render: (r) => <span className="mono">{f.fmt(r.cumShare, 'pct')}</span> },
     poLines: { num: true, sort: (r) => r.poLines, render: (r) => <span className="mono">{f.fmt(r.poLines, 'int')}</span> },
     receipts: { num: true, sort: (r) => r.receipts, render: (r) => <span className="mono">{f.fmt(r.receipts, 'int')}</span> },
   }
@@ -66,13 +65,13 @@ export function Scorecard({ res, minPoLines, setMinPoLines, onOpen, onCopy, scop
     .filter((c) => c.visible || c.id === 'rank' || c.id === 'vendor')
     .map((c) => {
       // Share formulas follow the live Share settings, whatever tooltip text was saved earlier.
-      const tip = c.id === 'share' ? { ...c.tip, formula: share.share } : c.id === 'cumShare' ? { ...c.tip, formula: share.cumShare } : c.tip
+      const tip = c.id === 'share' ? { ...c.tip, formula: share.share } : c.tip
       return { id: c.id, header: c.label, tip: <ColumnTipContent tip={tip} />, ...colDefs[c.id] }
     })
 
   const copy = () => {
     const out = sortedRef.current
-    const header = ['Rank', 'Vendor code', 'Vendor name', 'Group', 'Lead time (d)', 'Lead verdict', 'Fill', 'Fill verdict', 'On time', 'On-time verdict', 'vs Required (d)', 'vs Required verdict', 'Score', 'Issues', 'Status', 'Last PO', 'Value', 'POs', 'Share', 'Cum. share', 'PO lines', 'Receipts']
+    const header = ['Rank', 'Vendor code', 'Vendor name', 'Group', 'Lead time (d)', 'Lead verdict', 'Fill', 'Fill verdict', 'On time', 'On-time verdict', 'vs Required (d)', 'vs Required verdict', 'Score', 'Issues', 'Status', 'Last PO', 'Value', 'POs', 'Share', 'PO lines', 'Receipts']
     const lines = out.map((r) =>
       [
         r.rank ?? '', r.code, r.name, r.group,
@@ -82,7 +81,7 @@ export function Scorecard({ res, minPoLines, setMinPoLines, onOpen, onCopy, scop
         r.reqSlip.value?.toFixed(1) ?? '', r.reqSlip.verdict,
         r.score ?? '', r.flags.map((x) => `${cfg.issues.flags[x.key].label}: ${x.reason}`).join('; '),
         r.stillInUse ? L.legend.stillInUse : L.legend.notInUse,
-        f.fmt(r.lastPo, 'date'), Math.round(r.value), r.poCount, (r.share * 100).toFixed(1) + '%', (r.cumShare * 100).toFixed(1) + '%', r.poLines, r.receipts,
+        f.fmt(r.lastPo, 'date'), Math.round(r.value), r.poCount, (r.share * 100).toFixed(1) + '%', r.poLines, r.receipts,
       ].join('\t'),
     )
     onCopy([header.join('\t'), ...lines].join('\n'), out.length)
