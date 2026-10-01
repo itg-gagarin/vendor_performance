@@ -307,3 +307,15 @@ describe('demo dataset', () => {
     expect(res.rows.filter((r) => r.flags.length).length).toBeGreaterThan(0)
   })
 })
+
+describe('saved configuration from an earlier version', () => {
+  it('replaces unedited retired default texts but keeps edited ones', async () => {
+    const { normalizeConfig } = await import('../config/store')
+    const old = structuredClone(DEFAULT_CONFIG)
+    old.columns.scorecard.find((c) => c.id === 'cumShare')!.tip.formula = 'Σ value of this and larger vendors ÷ scope value'
+    old.columns.scorecard.find((c) => c.id === 'value')!.tip.purpose = 'My own words'
+    const cfg = normalizeConfig(JSON.parse(JSON.stringify(old)))
+    expect(cfg.columns.scorecard.find((c) => c.id === 'cumShare')!.tip.formula).toBe('Generated from Configuration → Share')
+    expect(cfg.columns.scorecard.find((c) => c.id === 'value')!.tip.purpose).toBe('My own words')
+  })
+})

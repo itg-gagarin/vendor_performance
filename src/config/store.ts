@@ -30,10 +30,38 @@ function reconcileColumns<K extends string>(saved: ColumnConfig<K>[], defaults: 
   return out
 }
 
+// Default texts from earlier versions. A saved configuration that still holds
+// one of these was never edited there, so it takes the current default.
+const RETIRED_DEFAULTS: Record<string, string[]> = {
+  'labels.filters.top80.label': ['Top {topSharePct} of spend'],
+  'labels.filters.top80.tip': ['Only the largest vendors that together make up the configured share of scope spend.'],
+  'columns.scorecard.cumShare.purpose': ['Running share of scope spend when vendors are sorted by value, largest first.', 'Running share when vendors of the same vendor group are sorted by share, largest first.'],
+  'columns.scorecard.cumShare.formula': ['Σ value of this and larger vendors ÷ scope value', 'Σ share of this and larger vendors in the same vendor group'],
+  'columns.scorecard.share.formula': ['vendor POs ÷ Σ POs of all vendors in the same vendor group'],
+  'tiles.scorecard.value.hint': ['{poLines} PO lines · {top80Vendors} vendors make {topSharePct} of spend'],
+}
+
+function retireOldDefaults(cfg: AppConfig) {
+  const replace = (path: string, current: string, next: string) => (RETIRED_DEFAULTS[path]?.includes(current) ? next : current)
+  cfg.labels.filters.top80.label = replace('labels.filters.top80.label', cfg.labels.filters.top80.label, DEFAULT_CONFIG.labels.filters.top80.label)
+  cfg.labels.filters.top80.tip = replace('labels.filters.top80.tip', cfg.labels.filters.top80.tip, DEFAULT_CONFIG.labels.filters.top80.tip)
+  for (const c of cfg.columns.scorecard) {
+    const d = DEFAULT_CONFIG.columns.scorecard.find((x) => x.id === c.id)
+    if (!d) continue
+    c.tip.purpose = replace(`columns.scorecard.${c.id}.purpose`, c.tip.purpose, d.tip.purpose)
+    c.tip.formula = replace(`columns.scorecard.${c.id}.formula`, c.tip.formula, d.tip.formula)
+  }
+  for (const t of cfg.tiles.scorecard) {
+    const d = DEFAULT_CONFIG.tiles.scorecard.find((x) => x.id === t.id)
+    if (d) t.hint = replace(`tiles.scorecard.${t.id}.hint`, t.hint, d.hint)
+  }
+}
+
 export function normalizeConfig(raw: unknown): AppConfig {
   const merged = deepMerge(DEFAULT_CONFIG, raw)
   merged.columns.scorecard = reconcileColumns(merged.columns.scorecard, DEFAULT_CONFIG.columns.scorecard)
   merged.columns.issues = reconcileColumns(merged.columns.issues, DEFAULT_CONFIG.columns.issues)
+  retireOldDefaults(merged)
   merged.version = CONFIG_VERSION
   return merged
 }

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { ClipboardCopy, Search } from 'lucide-react'
 import type { ScoreColumnKey } from '../config/types'
 import { interpolate, type ScopeResult, type VendorRow } from '../engine/compute'
+import { shareFormulas } from '../engine/explain'
 import { DataTable, type Col } from '../ui/DataTable'
 import { useUi } from '../ui/context'
 import { CoverageNote, CritCell, FlagPills, Legend, metricVars, Tiles, VendorCell } from '../ui/parts'
@@ -31,6 +32,7 @@ export function Scorecard({ res, minPoLines, setMinPoLines, onOpen, onCopy, scop
   }, [])
 
   const vars = metricVars(res.metrics, f)
+  const share = shareFormulas(cfg)
   const rows = useMemo(() => {
     const q = find.trim().toLowerCase()
     return res.rows.filter(
@@ -62,7 +64,11 @@ export function Scorecard({ res, minPoLines, setMinPoLines, onOpen, onCopy, scop
   }
   const cols: Col<VendorRow>[] = cfg.columns.scorecard
     .filter((c) => c.visible || c.id === 'rank' || c.id === 'vendor')
-    .map((c) => ({ id: c.id, header: c.label, tip: <ColumnTipContent tip={c.tip} />, ...colDefs[c.id] }))
+    .map((c) => {
+      // Share formulas follow the live Share settings, whatever tooltip text was saved earlier.
+      const tip = c.id === 'share' ? { ...c.tip, formula: share.share } : c.id === 'cumShare' ? { ...c.tip, formula: share.cumShare } : c.tip
+      return { id: c.id, header: c.label, tip: <ColumnTipContent tip={tip} />, ...colDefs[c.id] }
+    })
 
   const copy = () => {
     const out = sortedRef.current
@@ -105,7 +111,7 @@ export function Scorecard({ res, minPoLines, setMinPoLines, onOpen, onCopy, scop
           </Field>
           <div className="stack" style={{ gap: 'var(--space-2)', paddingBottom: 2 }}>
             <Toggle checked={reviewOnly} onChange={setReviewOnly} label={L.filters.reviewOnly.label} tip={L.filters.reviewOnly.tip} />
-            <Toggle checked={top80} onChange={setTop80} label={interpolate(L.filters.top80.label, vars)} tip={L.filters.top80.tip} />
+            <Toggle checked={top80} onChange={setTop80} label={interpolate(L.filters.top80.label, vars)} tip={share.top} />
           </div>
           <div className="stack" style={{ gap: 'var(--space-2)', paddingBottom: 2 }}>
             <Toggle checked={issueOnly} onChange={setIssueOnly} label={L.filters.issueOnly.label} tip={L.filters.issueOnly.tip} />
