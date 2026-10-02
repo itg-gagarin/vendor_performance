@@ -1,6 +1,6 @@
 # Vendor Performance
 
-Ranks material vendors on SAP B1 purchasing data (PO, GRPO, returns) so Purchasing can shortlist, renegotiate and act on problem vendors with evidence. It implements the PRD in *ITG – eProc Project Charter* and follows the Global Design System (one green per screen, hairlines instead of shadows, mono for anything compared down a column, light and dark token sets).
+Ranks material vendors on SAP B1 purchasing data (PO, GRPO, returns) so Purchasing can shortlist, renegotiate and act on problem vendors with evidence. It implements the PRD in *ITG – eProc Project Charter* and follows the Global Design System (one green per screen, hairlines instead of shadows, mono for anything compared down a column, light and dark token sets).sddf
 
 ## Run
 
